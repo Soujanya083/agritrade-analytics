@@ -1,0 +1,76 @@
+.how-it-works {
+  padding: 60px 10%;
+  background-color: #f9fafb;
+  text-align: center;
+}
+
+.section-title {
+  font-size: 2rem;
+  margin-bottom: 40px;
+  color: #1a202c;
+}
+
+.how__container {
+  display: flex;
+  gap: 30px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.how__card {
+  background: white;
+  border-radius: 12px;
+  padding: 30px;
+  flex: 1;
+  min-width: 320px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+  text-align: left;
+}
+
+.how__user-type {
+  font-size: 1.5rem;
+  margin-bottom: 25px;
+}
+
+.farmer-text { color: #00b14f; }
+.buyer-text { color: #2563eb; }
+
+.how__list {
+  list-style: none;
+  padding: 0;
+}
+
+.how__list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.step {
+  min-width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: bold;
+  font-size: 0.85rem;
+  margin-top: 3px;
+}
+
+.step--green { background-color: #00b14f; }
+.step--blue { background-color: #2563eb; }
+
+.how__list li strong {
+  display: block;
+  font-size: 1rem;
+  color: #2d3748;
+}
+
+.how__list li p {
+  margin: 2px 0 0;
+  font-size: 0.85rem;
+  color: #718096;
+}

@@ -1,0 +1,50 @@
+.hero {
+  background-color: #e6fffa;
+  padding: 80px 20px;
+  text-align: center;
+}
+
+.hero__logo {
+  width: 88px;
+  height: 88px;
+  margin-bottom: 10px;
+}
+
+.hero__title {
+  font-size: 2.5rem;
+  color: #1a202c;
+  margin: 0;
+}
+
+.hero__subtitle {
+  color: #4a5568;
+  max-width: 600px;
+  margin: 20px auto;
+  line-height: 1.6;
+}
+
+.hero__actions {
+  display: flex;
+  gap: 15px;
+  justify-content: center;
+  margin-top: 30px;
+}
+
+.btn {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 8px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.btn--farmer {
+  background-color: #00b14f;
+  color: white;
+}
+
+.btn--buyer {
+  background-color: #2563eb;
+  color: white;
+}
