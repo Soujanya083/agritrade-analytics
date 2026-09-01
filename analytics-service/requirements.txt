@@ -8,3 +8,16 @@ scikit-learn==1.5.1
 prophet==1.1.5
 python-dotenv==1.0.1
 pydantic==2.8.2
+
+fastapi
+uvicorn[standard]
+pymongo
+motor
+pandas
+numpy
+scikit-learn
+prophet
+python-dotenv
+pydantic
+bcrypt
+requests
