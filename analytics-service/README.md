@@ -1,71 +1,511 @@
-# AgriTrade Analytics Service
+# 🌾 AgriTrade AI – Analytics & Machine Learning Service
 
-Python microservice for the DA/ML layer of AgriTrade Analytics.
-Reads directly from the same MongoDB your Node/Express server (`server/server.js`)
-already writes to — no data duplication, no sync jobs.
+## Intelligent Agricultural Market Analytics for Smarter Selling Decisions
 
-## Architecture
+AgriTrade AI is a final-year Computer Science Engineering project focused on applying **Data Analytics, Data Science, Machine Learning, and Time-Series Forecasting** to agricultural marketplace data.
 
+The Analytics Service is the intelligence layer of the AgriTrade AI ecosystem. It transforms marketplace data into meaningful insights, forecasts, recommendations, validation results, and explainable decision support.
+
+---
+
+## 🎯 Problem Statement
+
+Farmers and agricultural stakeholders often have access to market prices and transaction data, but raw data alone does not answer important questions such as:
+
+* 📈 How are crop prices changing?
+* 🔮 What might the future price be?
+* 📊 Which forecasting model performs best?
+* 🌾 Which crops have higher demand?
+* 🗺️ Which regions show stronger demand?
+* 💰 Which crops generate higher revenue?
+* 👥 What are buyer purchasing patterns?
+* ⚠️ Is the marketplace data reliable and clean?
+* 🧠 Why is a particular price trend or forecast occurring?
+
+AgriTrade AI addresses these questions using a data-driven analytics and machine-learning layer.
+
+---
+
+# 🧠 Analytics & ML Features
+
+## 1️⃣ Price Trend Analysis
+
+Analyzes historical crop prices to identify:
+
+* Price movement over time
+* Historical trends
+* Crop-level price patterns
+
+---
+
+## 2️⃣ Best-Selling Crops Analysis
+
+Identifies the most actively traded crops based on marketplace data.
+
+Useful for understanding:
+
+* Popular crops
+* Marketplace activity
+* Demand indicators
+
+---
+
+## 3️⃣ Region-Wise Demand Analysis
+
+Analyzes agricultural demand across different regions.
+
+This helps identify geographical demand patterns and potential market opportunities.
+
+---
+
+## 4️⃣ Farmer Revenue Analytics
+
+Provides insights into farmer earnings and marketplace revenue patterns.
+
+---
+
+## 5️⃣ Buyer Purchasing Pattern Analysis
+
+Analyzes buyer behavior and transaction activity to understand marketplace purchasing patterns.
+
+---
+
+## 6️⃣ Crop Price Forecasting 🔮
+
+Predicts future crop prices using:
+
+### Primary Model
+
+* **Prophet**
+
+### Fallback Model
+
+* **Linear Regression Trend**
+
+The system automatically uses a fallback approach when historical data is insufficient for reliable Prophet forecasting.
+
+Forecast outputs include:
+
+* Predicted price
+* Forecast date
+* Lower confidence estimate
+* Upper confidence estimate
+
+---
+
+## 7️⃣ Demand Forecasting 📈
+
+Forecasts future agricultural demand using historical marketplace activity.
+
+---
+
+## 8️⃣ Recommendation Engine 🌾
+
+Provides crop recommendations using marketplace demand and supply signals.
+
+The goal is to support intelligent agricultural decision-making rather than simply displaying raw market data.
+
+---
+
+## 9️⃣ Model Backtesting & Validation 🧪
+
+One of the most important features of the project.
+
+Instead of generating predictions without validation, AgriTrade AI evaluates forecasting models against actual historical data.
+
+### Models Compared
+
+* Prophet
+* Linear Regression Baseline
+* ARIMA
+
+### Evaluation Metrics
+
+* **MAE — Mean Absolute Error**
+* **RMSE — Root Mean Squared Error**
+
+### Backtesting Process
+
+1. Historical data is collected.
+2. The latest observations are held out as test data.
+3. Models are trained using earlier historical observations.
+4. Each model forecasts the held-out period.
+5. Predictions are compared against actual values.
+6. The best-performing model is selected based on error metrics.
+
+This makes the forecasting system more scientifically defensible and transparent.
+
+---
+
+## 🔬 ARIMA Time-Series Forecasting
+
+The project includes an **ARIMA(1,1,1)** forecasting model for comparison with Prophet and Linear Regression.
+
+Example model comparison:
+
+| Model           |                  MAE |                 RMSE |
+| --------------- | -------------------: | -------------------: |
+| Prophet         | Compared dynamically | Compared dynamically |
+| Linear Baseline | Compared dynamically | Compared dynamically |
+| ARIMA           | Compared dynamically | Compared dynamically |
+
+The best model is selected based on the lowest prediction error.
+
+---
+
+## 🧠 Explainable Forecasting
+
+AgriTrade AI includes a **Time-Series Factor Analysis** module to explain the factors behind historical price behavior.
+
+The explanation analyzes:
+
+* Historical Average Price
+* Price Trend
+* Recent Price Momentum
+* Price Volatility
+* Recent Price Level
+
+Example output:
+
+```json
+{
+  "cropName": "Potato",
+  "explanationType": "time_series_factor_analysis",
+  "factors": [
+    {
+      "factor": "Price Trend",
+      "impact": "positive"
+    }
+  ]
+}
 ```
-React (agribid)  --calls-->  Node/Express (server/)      [auth, bidding, payments]
-                 --calls-->  FastAPI (analytics-service/) [analytics, ML, recommendations]
-                                        |
-                                  MongoDB (shared)
+
+The objective is to avoid a black-box analytics system and provide interpretable insights.
+
+---
+
+# 📊 Exploratory Data Analysis (EDA)
+
+The EDA Intelligence Module automatically analyzes marketplace datasets.
+
+### Current Analysis Includes
+
+* Dataset overview
+* Record counts
+* Column counts
+* Crop distribution
+* Numerical statistics
+* Mean
+* Median
+* Minimum
+* Maximum
+* Standard deviation
+* IQR-based outlier detection
+
+### Outlier Detection Method
+
+The project uses the **Interquartile Range (IQR)** method:
+
+```text
+Lower Bound = Q1 - 1.5 × IQR
+Upper Bound = Q3 + 1.5 × IQR
 ```
 
-## Setup
+Values outside these boundaries are identified as potential outliers.
+
+---
+
+# 🧹 Data Quality Audit
+
+Before performing analytics and machine learning, the system evaluates the quality of marketplace data.
+
+The Data Quality module checks:
+
+* Number of datasets
+* Total records
+* Missing values
+* Duplicate records
+* Dataset status
+
+Example:
+
+```json
+{
+  "summary": {
+    "datasetsChecked": 4,
+    "totalRecords": 507,
+    "totalMissingValues": 12,
+    "totalDuplicateRecords": 0
+  }
+}
+```
+
+This ensures that analytics results are based on monitored and validated data.
+
+---
+
+# 👥 Buyer Segmentation
+
+The system applies:
+
+* **RFM Analysis**
+* **K-Means Clustering**
+
+to group buyers based on purchasing behavior.
+
+RFM stands for:
+
+* **Recency**
+* **Frequency**
+* **Monetary Value**
+
+This allows the marketplace to identify different categories of buyers based on their activity.
+
+---
+
+# 🤖 AI Analytics Chatbot
+
+The analytics chatbot provides responses grounded in actual analytics and ML outputs.
+
+It is designed to answer questions related to:
+
+* Crop trends
+* Price forecasts
+* Demand
+* Marketplace insights
+
+The objective is to connect users with data-driven insights instead of generating unsupported answers.
+
+---
+
+# 🏛️ Government Mandi Price Validation
+
+AgriTrade AI includes a mandi price comparison feature.
+
+The system can compare:
+
+* Internal marketplace price predictions
+* Available agricultural market/mandi price information
+
+This adds an additional validation layer to the decision-support system.
+
+---
+
+# 🏗️ Technology Stack
+
+## Backend
+
+* Python
+* FastAPI
+* Uvicorn
+
+## Data Analytics
+
+* Pandas
+* NumPy
+
+## Machine Learning
+
+* Prophet
+* ARIMA
+* Scikit-learn
+* K-Means
+
+## Model Evaluation
+
+* MAE
+* RMSE
+* Holdout Backtesting
+
+## Database
+
+* MongoDB
+
+---
+
+# 📁 Project Structure
+
+```text
+analytics-service/
+│
+├── app/
+│   ├── routes/
+│   │   └── analytics.py
+│   │
+│   ├── services/
+│   │   ├── data_loader.py
+│   │   ├── trends.py
+│   │   ├── price_prediction.py
+│   │   ├── demand_forecast.py
+│   │   ├── recommendation.py
+│   │   ├── model_evaluation.py
+│   │   ├── buyer_segmentation.py
+│   │   ├── mandi_comparison.py
+│   │   ├── data_quality.py
+│   │   ├── eda_analysis.py
+│   │   └── explainability.py
+│   │
+│   └── main.py
+│
+├── tests/
+├── notebooks/
+├── requirements.txt
+└── README.md
+```
+
+---
+
+# 🚀 Installation
+
+## Clone the Repository
 
 ```bash
-cd analytics-service
-python3 -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-cp .env.example .env            # then edit MONGO_URI to match your server's .env
-uvicorn app.main:app --reload --port 8000
+git clone https://github.com/Soujanya083/agritrade-analytics.git
 ```
 
-Visit `http://localhost:8000/docs` for interactive Swagger docs — test every
-endpoint from the browser before wiring up React.
+## Navigate to the Project
 
-## Endpoints (Phase 2 + Phase 3 of the roadmap)
+```bash
+cd agritrade-analytics/analytics-service
+```
 
-| Endpoint | Purpose |
-|---|---|
-| `GET /api/analytics/price-trend?cropName=Wheat` | Historical avg price over time |
-| `GET /api/analytics/best-selling-crops?topN=10` | Ranked by completed-transaction revenue |
-| `GET /api/analytics/region-demand` | Bid counts by location + crop |
-| `GET /api/analytics/farmer-revenue` | Total payout per farmer |
-| `GET /api/analytics/buyer-patterns` | Spend/frequency per buyer |
-| `GET /api/analytics/price-prediction?cropName=Wheat&daysAhead=14` | Prophet forecast (linear fallback if <10 data points) |
-| `GET /api/analytics/recommend-crops?location=Pune&topN=5` | "Which crop has higher demand here?" — demand/supply gap score |
+## Create Virtual Environment
 
-## Next steps (in order)
+```bash
+python -m venv venv
+```
 
-1. **Seed test data.** Your live DB probably has too few transactions to
-   forecast meaningfully yet. Write a quick seed script (or use MongoDB
-   Compass) to insert ~30-60 days of sample crops/bids/transactions across
-   3-4 crops and 2-3 locations so the endpoints return real-looking results.
-2. **Test each endpoint via `/docs`** once seeded.
-3. **Wire into React.** In `DashboardPage.js`, add `fetch` calls to
-   `http://localhost:8000/api/analytics/...` alongside your existing calls
-   to the Node server, and render with a chart library (Recharts, already
-   common in React dashboards).
-4. **Model comparison for your report.** Once `price_prediction.py` is
-   working end-to-end, add an ARIMA or simple LSTM variant next to Prophet
-   and log MAE/RMSE for each — this comparison is exactly what your 5 base
-   papers report, and it's the strongest "I understand the tradeoffs"
-   talking point in an interview.
-5. **Deploy.** Two options: run analytics-service as a second process
-   alongside Node (simplest for a college demo), or containerize both with
-   Docker Compose so you can show "microservices architecture" as another
-   resume line.
+## Activate Virtual Environment
 
-## Notes
+### Windows
 
-- `price_prediction.py` currently forecasts based on `currentBid` (the
-  live/winning bid) rather than `basePrice`, since that better reflects
-  actual market price. Switch the field in `_prepare_series()` if you'd
-  rather forecast asking price instead.
-- The recommendation score in `recommendation.py` is intentionally simple
-  (normalized demand ÷ normalized supply) so you can explain every step
-  of it in a viva/interview — resist the urge to make it a black box.
+```powershell
+.\venv\Scripts\Activate
+```
+
+### Linux / macOS
+
+```bash
+source venv/bin/activate
+```
+
+## Install Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+---
+
+# ▶️ Running the Analytics Service
+
+From the `analytics-service` directory:
+
+```bash
+uvicorn app.main:app --reload
+```
+
+The API will run at:
+
+```text
+http://127.0.0.1:8000
+```
+
+---
+
+# 📚 API Documentation
+
+FastAPI automatically provides interactive API documentation:
+
+```text
+http://127.0.0.1:8000/docs
+```
+
+---
+
+# 🔗 Major API Endpoints
+
+| Endpoint                                | Description                    |
+| --------------------------------------- | ------------------------------ |
+| `/api/analytics/price-trend`            | Crop price trend analysis      |
+| `/api/analytics/best-selling-crops`     | Best-selling crop analysis     |
+| `/api/analytics/region-demand`          | Region-wise demand             |
+| `/api/analytics/farmer-revenue`         | Farmer revenue analysis        |
+| `/api/analytics/buyer-patterns`         | Buyer purchasing patterns      |
+| `/api/analytics/price-prediction`       | Crop price forecasting         |
+| `/api/analytics/demand-forecast`        | Demand forecasting             |
+| `/api/analytics/recommend-crops`        | Crop recommendations           |
+| `/api/analytics/backtest/price`         | Price model comparison         |
+| `/api/analytics/backtest/demand`        | Demand model comparison        |
+| `/api/analytics/buyer-segments`         | Buyer segmentation             |
+| `/api/analytics/data-quality`           | Data quality audit             |
+| `/api/analytics/eda-report`             | Exploratory data analysis      |
+| `/api/analytics/prediction-explanation` | Explainable forecasting        |
+| `/api/analytics/mandi-prices`           | Mandi price information        |
+| `/api/analytics/mandi-compare`          | Prediction vs mandi comparison |
+
+---
+
+# 🧪 Testing
+
+The project includes automated tests using:
+
+* **pytest**
+
+Run tests using:
+
+```bash
+pytest
+```
+
+---
+
+# 🎓 Academic Value
+
+This project is designed as a **Data Analytics and Data Science-focused final-year CSE project**.
+
+Key academic components include:
+
+* Exploratory Data Analysis
+* Data Quality Assessment
+* Time-Series Forecasting
+* ARIMA
+* Prophet
+* Linear Regression Baseline
+* Model Comparison
+* Backtesting
+* MAE and RMSE Evaluation
+* Outlier Detection
+* Buyer Segmentation
+* Recommendation Systems
+* Explainable Analytics
+* Government Market Price Comparison
+
+---
+
+# 🔮 Future Enhancements
+
+* Rolling-window backtesting
+* Automated ARIMA parameter optimization
+* Advanced anomaly detection for suspicious bidding
+* Feature-based machine learning forecasting
+* SHAP explanations for feature-based models
+* Power BI dashboard
+* Larger crop catalog
+* Real-time analytics
+* Market volatility alerts
+* External agricultural data integration
+
+---
+
+# 👩‍💻 Project
+
+**AgriTrade AI**
+
+Final Year Project — Computer Science Engineering
+
+**Domain:** Data Analytics | Data Science | Machine Learning
+
+---
+
+⭐ If you find this project interesting, consider starring the repository.
