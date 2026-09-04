@@ -19,3 +19,16 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+
+
+# Python
+venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Environment files
+.env
+
+# Generated analytics data
+analytics-service/eda_data/

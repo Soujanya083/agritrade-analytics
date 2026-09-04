@@ -1,95 +1,279 @@
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
-from app.services import trends, price_prediction, recommendation, demand_forecast, chatbot, model_evaluation, buyer_segmentation, mandi_comparison, data_quality, eda_analysis, explainability
 
-router = APIRouter(prefix="/api/analytics", tags=["analytics"])
- 
- 
+from app.services import (
+    trends,
+    price_prediction,
+    recommendation,
+    demand_forecast,
+    chatbot,
+    model_evaluation,
+    buyer_segmentation,
+    mandi_comparison,
+    data_quality,
+    eda_analysis,
+    explainability,
+    anomaly_detection,
+    dashboard_summary,
+    market_insights,
+    crop_performance,
+    price_volatility,
+    crop_recommendation_score
+)
+
+router = APIRouter(
+    prefix="/api/analytics",
+    tags=["analytics"]
+)
+
+
+# ============================================================
+# PYDANTIC RESPONSE MODELS
+# ============================================================
+
+class ForecastItem(BaseModel):
+    ds: str
+    yhat: float
+    yhat_lower: float
+    yhat_upper: float
+
+
+class PricePredictionResponse(BaseModel):
+    cropName: str
+    model: str
+    historyPoints: int
+    forecastDays: int
+    forecast: list[ForecastItem]
+
+
+class ChatMessage(BaseModel):
+    message: str
+
+
+# ============================================================
+# TREND ANALYTICS
+# ============================================================
+
 @router.get("/price-trend")
 def get_price_trend(cropName: str = Query(None)):
     return {"data": trends.price_trend(cropName)}
- 
- 
+
+
 @router.get("/best-selling-crops")
 def get_best_selling_crops(topN: int = Query(10)):
     return {"data": trends.best_selling_crops(topN)}
- 
- 
+
+
 @router.get("/region-demand")
 def get_region_demand():
     return {"data": trends.region_wise_demand()}
- 
- 
+
+
 @router.get("/farmer-revenue")
 def get_farmer_revenue():
     return {"data": trends.farmer_revenue()}
- 
- 
+
+
 @router.get("/buyer-patterns")
 def get_buyer_patterns():
     return {"data": trends.buyer_purchasing_patterns()}
- 
- 
-@router.get("/price-prediction")
-def get_price_prediction(cropName: str = Query(...), daysAhead: int = Query(14)):
+
+
+# ============================================================
+# PRICE PREDICTION
+# ============================================================
+
+@router.get(
+    "/price-prediction",
+    response_model=PricePredictionResponse
+)
+def get_price_prediction(
+    cropName: str = Query(...),
+    daysAhead: int = Query(14, ge=1, le=365)
+):
     return price_prediction.predict_price(cropName, daysAhead)
- 
- 
+
+
+# ============================================================
+# CROP RECOMMENDATION
+# ============================================================
+
 @router.get("/recommend-crops")
-def get_recommendation(location: str = Query(None), topN: int = Query(5)):
+def get_recommendation(
+    location: str = Query(None),
+    topN: int = Query(5)
+):
     return {"data": recommendation.recommend_crops(location, topN)}
- 
- 
+
+
+# ============================================================
+# DEMAND FORECASTING
+# ============================================================
+
 @router.get("/demand-forecast")
-def get_demand_forecast(cropName: str = Query(...), daysAhead: int = Query(14)):
+def get_demand_forecast(
+    cropName: str = Query(...),
+    daysAhead: int = Query(14)
+):
     return demand_forecast.predict_demand(cropName, daysAhead)
- 
- 
-class ChatMessage(BaseModel):
-    message: str
- 
- 
+
+
+# ============================================================
+# AI CHATBOT
+# ============================================================
+
 @router.post("/chatbot")
 def post_chatbot(payload: ChatMessage):
     return chatbot.handle_message(payload.message)
- 
- 
+
+
+# ============================================================
+# MODEL EVALUATION / BACKTESTING
+# ============================================================
+
 @router.get("/backtest/price")
-def get_price_backtest(cropName: str = Query(...), testDays: int = Query(7)):
+def get_price_backtest(
+    cropName: str = Query(...),
+    testDays: int = Query(7)
+):
     return model_evaluation.backtest_price_model(cropName, testDays)
- 
- 
+
+
 @router.get("/backtest/demand")
-def get_demand_backtest(cropName: str = Query(...), testDays: int = Query(7)):
+def get_demand_backtest(
+    cropName: str = Query(...),
+    testDays: int = Query(7)
+):
     return model_evaluation.backtest_demand_model(cropName, testDays)
- 
- 
+
+
+# ============================================================
+# BUYER SEGMENTATION
+# ============================================================
+
 @router.get("/buyer-segments")
-def get_buyer_segments(nClusters: int = Query(3)):
+def get_buyer_segments(
+    nClusters: int = Query(3)
+):
     return buyer_segmentation.segment_buyers(nClusters)
- 
- 
+
+
+# ============================================================
+# MANDI PRICE COMPARISON
+# ============================================================
+
 @router.get("/mandi-prices")
-def get_mandi_prices(commodity: str = Query(...), state: str = Query(None)):
-    return mandi_comparison.fetch_mandi_prices(commodity, state)
- 
- 
+def get_mandi_prices(
+    commodity: str = Query(...),
+    state: str = Query(None)
+):
+    return mandi_comparison.fetch_mandi_prices(
+        commodity,
+        state
+    )
+
+
 @router.get("/mandi-compare")
-def get_mandi_compare(cropName: str = Query(...), state: str = Query(None)):
-    prediction = price_prediction.predict_price(cropName, days_ahead=1)
+def get_mandi_compare(
+    cropName: str = Query(...),
+    state: str = Query(None)
+):
+    prediction = price_prediction.predict_price(
+        cropName,
+        days_ahead=1
+    )
+
     if "error" in prediction or not prediction.get("forecast"):
-        return {"error": f"Could not get a prediction for '{cropName}' to compare."}
+        return {
+            "error": (
+                f"Could not get a prediction for "
+                f"'{cropName}' to compare."
+            )
+        }
+
     predicted_price = prediction["forecast"][0]["yhat"]
-    return mandi_comparison.compare_with_prediction(cropName, predicted_price, state)
+
+    return mandi_comparison.compare_with_prediction(
+        cropName,
+        predicted_price,
+        state
+    )
+
+
+# ============================================================
+# DATA QUALITY
+# ============================================================
 
 @router.get("/data-quality")
 def get_data_quality():
     return data_quality.generate_data_quality_report()
 
+
+# ============================================================
+# EXPLORATORY DATA ANALYSIS
+# ============================================================
+
 @router.get("/eda-report")
 def get_eda_report():
     return eda_analysis.generate_eda_report()
 
+
+# ============================================================
+# MODEL EXPLAINABILITY
+# ============================================================
+
 @router.get("/prediction-explanation")
-def get_prediction_explanation(cropName: str = Query(...)):
+def get_prediction_explanation(
+    cropName: str = Query(...)
+):
     return explainability.explain_price_prediction(cropName)
+
+
+# ============================================================
+# ANOMALY DETECTION
+# ============================================================
+
+@router.get("/bid-anomalies")
+def get_bid_anomalies(
+    contamination: float = Query(
+        0.05,
+        ge=0.01,
+        le=0.20
+    )
+):
+    return anomaly_detection.detect_bid_anomalies(
+        contamination
+    )
+
+@router.get("/bid-anomalies")
+def get_bid_anomalies(
+    contamination: float = Query(
+        0.05,
+        ge=0.01,
+        le=0.20
+    )
+):
+    return anomaly_detection.detect_bid_anomalies(
+        contamination
+    )
+
+@router.get("/dashboard-summary")
+def get_dashboard_summary():
+    return dashboard_summary.get_dashboard_summary()
+
+@router.get("/market-insights")
+def get_market_insights():
+    return market_insights.get_market_insights()
+
+@router.get("/crop-performance")
+def get_crop_performance():
+    return crop_performance.get_crop_performance()
+
+@router.get("/price-volatility")
+def get_price_volatility():
+    return price_volatility.get_price_volatility()
+
+@router.get("/crop-recommendation-score")
+def get_crop_recommendation_score():
+    return crop_recommendation_score.get_crop_recommendation_scores()
+
