@@ -111,45 +111,33 @@ The goal is to support intelligent agricultural decision-making rather than simp
 
 One of the most important features of the project.
 
-Instead of generating predictions without validation, AgriTrade AI evaluates forecasting models against actual historical data.
+Instead of scoring a model on a single lucky-or-unlucky train/test split, AgriTrade AI uses **walk-forward (rolling-origin) validation**: the training window slides forward through history in multiple folds, and each fold scores every candidate model on data it hasn't seen. This is much closer to how the model will actually be used in production than a one-shot split.
 
 ### Models Compared
 
-* Prophet
-* Linear Regression Baseline
-* ARIMA
+* **Naive baseline** — tomorrow's price/demand = today's value. Any model that can't beat this on average isn't earning its complexity, so this baseline is the bar every other model has to clear.
+* **Linear Regression** — simple trend extrapolation.
+* **Prophet** — used for price forecasting (skipped for demand backtesting, where series are short and Prophet fell back to linear too often to be a meaningful comparison).
+
+> ⚠️ **ARIMA is not currently implemented.** It's listed as future work below rather than as a shipped feature — an earlier draft of this README claimed it was already in place, which wasn't accurate.
 
 ### Evaluation Metrics
 
-* **MAE — Mean Absolute Error**
-* **RMSE — Root Mean Squared Error**
+* **MAE** — Mean Absolute Error
+* **RMSE** — Root Mean Squared Error
+* **MAPE** — Mean Absolute Percentage Error
+* **sMAPE** — Symmetric MAPE (stays stable when actual values are near zero, unlike MAPE)
 
-### Backtesting Process
+### Walk-Forward Validation Process
 
-1. Historical data is collected.
-2. The latest observations are held out as test data.
-3. Models are trained using earlier historical observations.
-4. Each model forecasts the held-out period.
-5. Predictions are compared against actual values.
-6. The best-performing model is selected based on error metrics.
+1. Historical data is collected and sorted by date.
+2. Starting from a minimum training window, each fold trains on everything up to that point and tests on the next `horizon` days.
+3. The training window then slides forward and the process repeats, producing several folds instead of one.
+4. Naive, Linear Regression, and (for price) Prophet are each scored on every fold.
+5. Metrics are averaged across folds per model, and the model with the lowest average RMSE is reported as the best — but only if it actually beats the Naive baseline (`bestModelBeatsNaiveBaseline`).
+6. When there isn't enough history for multiple folds, the endpoint falls back to a single train/test split and says so explicitly (`validationMethod: "single-split"`), rather than silently degrading.
 
-This makes the forecasting system more scientifically defensible and transparent.
-
----
-
-## 🔬 ARIMA Time-Series Forecasting
-
-The project includes an **ARIMA(1,1,1)** forecasting model for comparison with Prophet and Linear Regression.
-
-Example model comparison:
-
-| Model           |                  MAE |                 RMSE |
-| --------------- | -------------------: | -------------------: |
-| Prophet         | Compared dynamically | Compared dynamically |
-| Linear Baseline | Compared dynamically | Compared dynamically |
-| ARIMA           | Compared dynamically | Compared dynamically |
-
-The best model is selected based on the lowest prediction error.
+This makes the forecasting system more scientifically defensible and transparent — and gives an honest answer to "why should I trust this model?" instead of a single number that could have been a lucky split.
 
 ---
 
@@ -201,6 +189,8 @@ The EDA Intelligence Module automatically analyzes marketplace datasets.
 * Maximum
 * Standard deviation
 * IQR-based outlier detection
+* Seasonal patterns — average price by day-of-week and by month
+* Correlation analysis — Pearson correlation between numeric crop fields (e.g. base price vs. final winning bid), reported without claiming causation
 
 ### Outlier Detection Method
 
@@ -224,7 +214,9 @@ The Data Quality module checks:
 * Number of datasets
 * Total records
 * Missing values
+* **Completeness percentage** — share of non-missing cells per dataset, and overall
 * Duplicate records
+* **Invalid values** — negative prices/quantities/amounts, and future-dated records (structurally present but semantically impossible data, distinct from missing values)
 * Dataset status
 
 Example:
@@ -307,15 +299,12 @@ This adds an additional validation layer to the decision-support system.
 ## Machine Learning
 
 * Prophet
-* ARIMA
-* Scikit-learn
-* K-Means
+* Scikit-learn (Linear Regression, Isolation Forest, K-Means)
 
 ## Model Evaluation
 
-* MAE
-* RMSE
-* Holdout Backtesting
+* MAE, RMSE, MAPE, sMAPE
+* Walk-Forward (Rolling-Origin) Backtesting, with single-split fallback for small datasets
 
 ## Database
 
@@ -468,13 +457,11 @@ Key academic components include:
 
 * Exploratory Data Analysis
 * Data Quality Assessment
-* Time-Series Forecasting
-* ARIMA
-* Prophet
-* Linear Regression Baseline
+* Time-Series Forecasting (Prophet, Linear Regression, Naive baseline)
+* Walk-Forward (Rolling-Origin) Model Validation
 * Model Comparison
 * Backtesting
-* MAE and RMSE Evaluation
+* MAE, RMSE, MAPE, sMAPE Evaluation
 * Outlier Detection
 * Buyer Segmentation
 * Recommendation Systems
@@ -485,8 +472,9 @@ Key academic components include:
 
 # 🔮 Future Enhancements
 
-* Rolling-window backtesting
-* Automated ARIMA parameter optimization
+* ARIMA/SARIMA as an additional compared model
+* Statistical (Z-score/IQR) baseline alongside the Isolation Forest anomaly detector
+* Decision backtesting — evaluating the *recommendation engine's* choices against baseline strategies (sell-now, highest-price, etc.), separate from model backtesting above
 * Advanced anomaly detection for suspicious bidding
 * Feature-based machine learning forecasting
 * SHAP explanations for feature-based models

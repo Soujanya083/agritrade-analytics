@@ -34,7 +34,7 @@ def test_falls_back_to_linear_with_sparse_data():
     fake_df = _make_fake_crops_df(n_days=5)
     with patch.object(price_prediction, "load_crops", return_value=fake_df):
         result = price_prediction.predict_price("Wheat", days_ahead=7)
-    assert result["model"] == "linear_fallback"
+    assert result["model"] == "Linear Regression Fallback"
     assert result["historyPoints"] == 5
     assert len(result["forecast"]) == 7
 
@@ -43,7 +43,7 @@ def test_uses_prophet_with_enough_data():
     fake_df = _make_fake_crops_df(n_days=15)
     with patch.object(price_prediction, "load_crops", return_value=fake_df):
         result = price_prediction.predict_price("Wheat", days_ahead=7)
-    assert result["model"] in ("prophet", "linear_fallback")
+    assert result["model"] in ("Prophet", "Linear Regression Fallback")
     assert len(result["forecast"]) == 7
 
 

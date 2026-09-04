@@ -32,6 +32,71 @@ def detect_outliers(series: pd.Series):
     }
 
 
+def _seasonal_price_pattern(crops_df: pd.DataFrame) -> dict:
+    """
+    Average price by day-of-week and by month. This surfaces whatever
+    seasonal pattern the data actually shows rather than assuming one -
+    with limited marketplace history the pattern may be noisy, which is
+    itself a useful, honest finding.
+    """
+    if "currentBid" not in crops_df.columns or "createdAt" not in crops_df.columns:
+        return {}
+
+    df = crops_df.copy()
+    df["currentBid"] = pd.to_numeric(df["currentBid"], errors="coerce")
+    df["createdAt"] = pd.to_datetime(df["createdAt"], errors="coerce")
+    df = df.dropna(subset=["currentBid", "createdAt"])
+
+    if df.empty:
+        return {}
+
+    df["dayOfWeek"] = df["createdAt"].dt.day_name()
+    df["month"] = df["createdAt"].dt.month_name()
+
+    by_day = df.groupby("dayOfWeek")["currentBid"].mean().round(2)
+    by_month = df.groupby("month")["currentBid"].mean().round(2)
+
+    return {
+        "averagePriceByDayOfWeek": by_day.to_dict(),
+        "averagePriceByMonth": by_month.to_dict(),
+        "note": (
+            "Based on available marketplace history; patterns may firm up "
+            "as more data accumulates over multiple seasons."
+        ),
+    }
+
+
+def _correlation_analysis(crops_df: pd.DataFrame) -> dict:
+    """
+    Pearson correlation between numeric crop fields - e.g. does a higher
+    base (asking) price actually predict a higher final winning bid?
+    Reported as correlation only; explicitly not claimed as causation.
+    """
+    numeric_df = crops_df.select_dtypes(include="number")
+
+    if numeric_df.shape[1] < 2 or len(numeric_df) < 3:
+        return {}
+
+    corr_matrix = numeric_df.corr(numeric_only=True).round(3)
+    columns = corr_matrix.columns.tolist()
+
+    pairs = []
+    for i in range(len(columns)):
+        for j in range(i + 1, len(columns)):
+            value = corr_matrix.iloc[i, j]
+            if pd.notna(value):
+                pairs.append({
+                    "fieldA": columns[i],
+                    "fieldB": columns[j],
+                    "correlation": float(value),
+                })
+
+    return {
+        "pairwiseCorrelations": pairs,
+        "note": "Correlation does not imply causation.",
+    }
+
+
 def generate_eda_report():
     crops = load_crops()
     bids = load_bids()
@@ -89,5 +154,11 @@ def generate_eda_report():
                 if len(series) > 1 else 0,
                 "outliers": detect_outliers(series)
             }
+
+    # Seasonal patterns (day-of-week / month price averages)
+    report["seasonalPatterns"] = _seasonal_price_pattern(crops)
+
+    # Correlation between numeric crop fields (e.g. basePrice vs currentBid)
+    report["correlationAnalysis"] = _correlation_analysis(crops)
 
     return report
