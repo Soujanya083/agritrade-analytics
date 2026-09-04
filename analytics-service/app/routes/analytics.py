@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
-from app.services import trends, price_prediction, recommendation, demand_forecast, chatbot, model_evaluation, buyer_segmentation, mandi_comparison, data_quality
+from app.services import trends, price_prediction, recommendation, demand_forecast, chatbot, model_evaluation, buyer_segmentation, mandi_comparison, data_quality, eda_analysis
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
  
@@ -85,3 +85,7 @@ def get_mandi_compare(cropName: str = Query(...), state: str = Query(None)):
 @router.get("/data-quality")
 def get_data_quality():
     return data_quality.generate_data_quality_report()
+
+@router.get("/eda-report")
+def get_eda_report():
+    return eda_analysis.generate_eda_report()
