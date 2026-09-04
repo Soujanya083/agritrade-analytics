@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
-from app.services import trends, price_prediction, recommendation, demand_forecast, chatbot, model_evaluation, buyer_segmentation, mandi_comparison
- 
+from app.services import trends, price_prediction, recommendation, demand_forecast, chatbot, model_evaluation, buyer_segmentation, mandi_comparison, data_quality
+
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
  
  
@@ -81,4 +81,7 @@ def get_mandi_compare(cropName: str = Query(...), state: str = Query(None)):
         return {"error": f"Could not get a prediction for '{cropName}' to compare."}
     predicted_price = prediction["forecast"][0]["yhat"]
     return mandi_comparison.compare_with_prediction(cropName, predicted_price, state)
- 
+
+@router.get("/data-quality")
+def get_data_quality():
+    return data_quality.generate_data_quality_report()
