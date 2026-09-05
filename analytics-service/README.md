@@ -143,9 +143,33 @@ This makes the forecasting system more scientifically defensible and transparent
 
 ## 🧠 Explainable Forecasting
 
-AgriTrade AI includes a **Time-Series Factor Analysis** module to explain the factors behind historical price behavior.
+AgriTrade AI explains individual price predictions two ways, depending on how much listing history is available.
 
-The explanation analyzes:
+### Primary: SHAP on a feature-engineered RandomForest
+
+A separate model (`feature_price_model.py`) engineers per-listing features — the crop's previous listing price, a short rolling average, day-of-week, month, the farmer's asking price, crop type, and location — and fits a `RandomForestRegressor` on them. **SHAP (TreeExplainer)** then attributes the predicted price to each feature with a signed contribution, so the explanation reflects an actual model rather than a hand-written heuristic.
+
+Example output:
+
+```json
+{
+  "cropName": "Potato",
+  "method": "SHAP (TreeExplainer on RandomForestRegressor)",
+  "basePredictionValue": 1450.0,
+  "predictedPrice": 1620.5,
+  "topFactors": [
+    { "factor": "Previous Listing Price (Same Crop)", "shapContribution": 95.2, "impact": "positive" },
+    { "factor": "Farmer's Asking Price", "shapContribution": 60.1, "impact": "positive" },
+    { "factor": "Recent Average Price (Last 3 Listings)", "shapContribution": -12.4, "impact": "negative" }
+  ]
+}
+```
+
+`/api/analytics/price-model/evaluation` reports the model's own accuracy (MAE/RMSE/MAPE/sMAPE on a chronological hold-out) and feature importances, so the model's reliability is stated honestly rather than assumed.
+
+### Fallback: rule-based Time-Series Factor Analysis
+
+When there isn't yet enough marketplace-wide listing history to train a reliable feature model (fewer than ~20 listings with prior context), or SHAP isn't available in the environment, the system automatically falls back to a rule-based explainer analyzing:
 
 * Historical Average Price
 * Price Trend
@@ -153,22 +177,9 @@ The explanation analyzes:
 * Price Volatility
 * Recent Price Level
 
-Example output:
+This fallback is also available directly at `/api/analytics/prediction-explanation/rule-based`, bypassing SHAP entirely.
 
-```json
-{
-  "cropName": "Potato",
-  "explanationType": "time_series_factor_analysis",
-  "factors": [
-    {
-      "factor": "Price Trend",
-      "impact": "positive"
-    }
-  ]
-}
-```
-
-The objective is to avoid a black-box analytics system and provide interpretable insights.
+The objective either way is to avoid a black-box analytics system and provide interpretable insights — using SHAP where a suitable feature-based model actually exists, and a transparent heuristic where it doesn't yet.
 
 ---
 
@@ -299,7 +310,8 @@ This adds an additional validation layer to the decision-support system.
 ## Machine Learning
 
 * Prophet
-* Scikit-learn (Linear Regression, Isolation Forest, K-Means)
+* Scikit-learn (Linear Regression, Isolation Forest, K-Means, RandomForestRegressor)
+* SHAP (model explainability)
 
 ## Model Evaluation
 
@@ -429,7 +441,9 @@ http://127.0.0.1:8000/docs
 | `/api/analytics/buyer-segments`         | Buyer segmentation             |
 | `/api/analytics/data-quality`           | Data quality audit             |
 | `/api/analytics/eda-report`             | Exploratory data analysis      |
-| `/api/analytics/prediction-explanation` | Explainable forecasting        |
+| `/api/analytics/prediction-explanation` | Explainable forecasting (SHAP, falls back to rule-based) |
+| `/api/analytics/prediction-explanation/rule-based` | Rule-based explanation, bypassing SHAP |
+| `/api/analytics/price-model/evaluation` | Feature-engineered RandomForest accuracy + feature importances |
 | `/api/analytics/mandi-prices`           | Mandi price information        |
 | `/api/analytics/mandi-compare`          | Prediction vs mandi comparison |
 
@@ -465,7 +479,7 @@ Key academic components include:
 * Outlier Detection
 * Buyer Segmentation
 * Recommendation Systems
-* Explainable Analytics
+* Explainable Analytics (SHAP on a feature-engineered RandomForest, with a rule-based fallback)
 * Government Market Price Comparison
 
 ---
@@ -476,8 +490,6 @@ Key academic components include:
 * Statistical (Z-score/IQR) baseline alongside the Isolation Forest anomaly detector
 * Decision backtesting — evaluating the *recommendation engine's* choices against baseline strategies (sell-now, highest-price, etc.), separate from model backtesting above
 * Advanced anomaly detection for suspicious bidding
-* Feature-based machine learning forecasting
-* SHAP explanations for feature-based models
 * Power BI dashboard
 * Larger crop catalog
 * Real-time analytics

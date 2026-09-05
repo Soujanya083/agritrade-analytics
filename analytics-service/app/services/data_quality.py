@@ -9,7 +9,7 @@ from app.services.data_loader import (
 # Columns that should never be negative, per dataset. A negative price,
 # quantity, or payout is a data-entry/pipeline bug, not a valid record.
 _NON_NEGATIVE_COLUMNS = {
-    "crops": ["basePrice", "currentBid", "quantity"],
+    "crops": ["basePrice", "currentBid", "quantityKg"],
     "bids": ["amount"],
     "transactions": ["totalAmount", "payout"],
     "users": [],

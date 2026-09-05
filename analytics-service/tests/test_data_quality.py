@@ -15,7 +15,7 @@ def test_detects_negative_price_in_crops():
     df = pd.DataFrame({
         "basePrice": [10, -5, 20],
         "currentBid": [12, 8, 22],
-        "quantity": [1, 2, 3],
+        "quantityKg": [1, 2, 3],
         "createdAt": [datetime.now(timezone.utc)] * 3,
         "harvestedDate": [datetime.now(timezone.utc)] * 3,
     })
@@ -28,7 +28,7 @@ def test_detects_future_dated_record():
     df = pd.DataFrame({
         "basePrice": [10, 20],
         "currentBid": [12, 22],
-        "quantity": [1, 2],
+        "quantityKg": [1, 2],
         "createdAt": [datetime.now(timezone.utc), future],
         "harvestedDate": [datetime.now(timezone.utc)] * 2,
     })
@@ -40,7 +40,7 @@ def test_no_issues_flagged_for_clean_data():
     df = pd.DataFrame({
         "basePrice": [10, 20],
         "currentBid": [12, 22],
-        "quantity": [1, 2],
+        "quantityKg": [1, 2],
         "createdAt": [datetime.now(timezone.utc)] * 2,
         "harvestedDate": [datetime.now(timezone.utc)] * 2,
     })

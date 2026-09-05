@@ -13,6 +13,7 @@ from app.services import (
     data_quality,
     eda_analysis,
     explainability,
+    feature_price_model,
     anomaly_detection,
     dashboard_summary,
     market_insights,
@@ -226,24 +227,35 @@ def get_eda_report():
 def get_prediction_explanation(
     cropName: str = Query(...)
 ):
+    """
+    SHAP-based explanation from the feature-engineered RandomForest
+    when there's enough listing history; otherwise falls back to the
+    rule-based trend/volatility/momentum explanation automatically.
+    """
+    return feature_price_model.explain_with_shap(cropName)
+
+
+@router.get("/prediction-explanation/rule-based")
+def get_prediction_explanation_rule_based(
+    cropName: str = Query(...)
+):
+    """Explicitly requests the rule-based explanation, bypassing SHAP."""
     return explainability.explain_price_prediction(cropName)
+
+
+@router.get("/price-model/evaluation")
+def get_price_model_evaluation():
+    """
+    Trains and evaluates the feature-engineered RandomForest price
+    model (chronological hold-out), reporting accuracy metrics and
+    feature importances.
+    """
+    return feature_price_model.train_and_evaluate_feature_model()
 
 
 # ============================================================
 # ANOMALY DETECTION
 # ============================================================
-
-@router.get("/bid-anomalies")
-def get_bid_anomalies(
-    contamination: float = Query(
-        0.05,
-        ge=0.01,
-        le=0.20
-    )
-):
-    return anomaly_detection.detect_bid_anomalies(
-        contamination
-    )
 
 @router.get("/bid-anomalies")
 def get_bid_anomalies(
@@ -276,4 +288,3 @@ def get_price_volatility():
 @router.get("/crop-recommendation-score")
 def get_crop_recommendation_score():
     return crop_recommendation_score.get_crop_recommendation_scores()
-
