@@ -101,9 +101,22 @@ Forecasts future agricultural demand using historical marketplace activity.
 
 ## 8️⃣ Recommendation Engine 🌾
 
-Provides crop recommendations using marketplace demand and supply signals.
+Two separate, deliberately-not-merged recommendation views, answering different questions:
 
-The goal is to support intelligent agricultural decision-making rather than simply displaying raw market data.
+* **`recommend-crops`** — *location-specific*: given a place, which crop has the best demand-vs-supply gap there right now? (`recommendation.py`)
+* **`crop_recommendation_score.py`** — *market-wide*: across the whole marketplace, which crop scores best on price / listing activity / price stability?
+
+### Market Score Methodology
+
+`marketScore = priceScore×0.40 + listingScore×0.30 + stabilityScore×0.30`
+
+These weights are a **documented judgment call**, not derived from data — there's no ground-truth "good outcome" label to fit them against yet. Decision backtesting (see below) is what actually validates whether this scoring correlates with good real-world outcomes.
+
+### Sample-Size Confidence
+
+A crop with only 1 listing has zero price variance by definition — which would otherwise score as "perfectly stable" purely from having too little data to show any variance at all. Crops with fewer than **3 listings** are labeled `"Insufficient Data"` with `dataConfidence: "low"` instead of being given a potentially misleading confident recommendation.
+
+The goal either way is to support intelligent agricultural decision-making rather than simply displaying raw market data — while being explicit about where the confidence in that support actually comes from.
 
 ---
 
@@ -138,6 +151,44 @@ Instead of scoring a model on a single lucky-or-unlucky train/test split, AgriTr
 6. When there isn't enough history for multiple folds, the endpoint falls back to a single train/test split and says so explicitly (`validationMethod: "single-split"`), rather than silently degrading.
 
 This makes the forecasting system more scientifically defensible and transparent — and gives an honest answer to "why should I trust this model?" instead of a single number that could have been a lucky split.
+
+---
+
+## 🔟 Decision Support: Sell Now, or Wait? 🧠
+
+The recommendation engines above answer *which crop*. This answers a different, previously-missing question: *when should a farmer sell?*
+
+`decision_engine.py` compares a crop's current price against a short-horizon price forecast (default 7 days) and recommends **Sell Now** or **Wait**, with a plain-language reason (e.g. *"Forecast expects only a 1.2% change - not worth the wait"*). A "Wait" recommendation requires the forecast to clear a minimum threshold (2%) — small forecast wobble doesn't flip the recommendation on noise alone.
+
+**No transportation, storage, or holding costs are assumed anywhere** — this project doesn't have that data, and inventing plausible-looking numbers for it would misrepresent the results. This is stated explicitly in every response (`limitations` field), not buried in documentation.
+
+```json
+{
+  "cropName": "Potato",
+  "currentPrice": 1450.0,
+  "forecastedPrice": 1520.0,
+  "recommendation": "Wait",
+  "reason": "Forecast expects a 4.8% price increase over the horizon."
+}
+```
+
+---
+
+## 1️⃣1️⃣ Decision Backtesting 🔬🔥
+
+This is the project's strongest academic contribution, per the original project plan — and the piece that was actually missing until this phase.
+
+`backtest_price_model` (above) validates the *forecasting model's* accuracy. This is a different question: **does following the recommendation actually produce a better outcome than not using it?**
+
+For every completed historical sale, three outcomes are compared:
+
+* **Sell Immediately** — the price of the first bid received (the naive "take the first offer" baseline)
+* **Actual Historical Outcome** — what the farmer really received
+* **AgriTrade Recommendation** — computed using *only data available up to the listing date* (no lookahead bias); if it recommends "Wait", the outcome used is the **real market-wide price actually observed** ~N days later — never an invented number
+
+The response reports win rate against the naive baseline, average regret (gap to the best achievable outcome in hindsight), and worst-case downside — the same kind of evidence your plan calls "scientifically strong" backtesting, rather than just "our AI gives recommendations."
+
+Cases without enough historical price context before/after the listing date are skipped and counted explicitly (`skippedInsufficientData`), not silently dropped — with a young marketplace dataset, expect this number to matter, and it's worth stating as a limitation rather than hiding it.
 
 ---
 
@@ -424,6 +475,37 @@ http://127.0.0.1:8000/docs
 
 ---
 
+# 🚨 Market & Bidding Anomaly Detection
+
+Rather than claiming "fraud detection" - which would require labelled fraud data this project doesn't have - AgriTrade AI detects and reports **unusual bidding behaviour**, using three independent methods on bid amounts:
+
+* **Z-score** — flags bids more than 3 standard deviations from the mean
+* **IQR (interquartile range)** — flags bids outside `[Q1 - 1.5×IQR, Q3 + 1.5×IQR]`
+* **Isolation Forest** — an unsupervised ML model trained to isolate outliers
+
+Each bid is scored by all three, and the response reports **method agreement**: a bid flagged by all three is much stronger evidence of genuinely unusual behaviour than one flagged by only one method. This comparison is itself the scientific contribution here — a single method's opinion is an assumption; agreement across independently-reasoned methods is evidence.
+
+```json
+{
+  "methodAgreement": {
+    "flaggedByAllThree": 2,
+    "flaggedByTwo": 5,
+    "flaggedByOneOnly": 11
+  },
+  "anomalies": [
+    {
+      "bidAmount": 45000,
+      "flaggedBy": { "zScore": true, "iqr": true, "isolationForest": true },
+      "confidence": "high"
+    }
+  ]
+}
+```
+
+The system always reports "anomalous behaviour" or "unusual bidding pattern" — never "fraud" — since that claim isn't scientifically justified without labelled fraud events to validate against.
+
+---
+
 # 🔗 Major API Endpoints
 
 | Endpoint                                | Description                    |
@@ -438,9 +520,12 @@ http://127.0.0.1:8000/docs
 | `/api/analytics/recommend-crops`        | Crop recommendations           |
 | `/api/analytics/backtest/price`         | Price model comparison         |
 | `/api/analytics/backtest/demand`        | Demand model comparison        |
+| `/api/analytics/decision/sell-or-wait`  | Live sell-now-vs-wait recommendation |
+| `/api/analytics/decision/backtest`      | Decision backtesting vs. baseline strategies |
 | `/api/analytics/buyer-segments`         | Buyer segmentation             |
 | `/api/analytics/data-quality`           | Data quality audit             |
 | `/api/analytics/eda-report`             | Exploratory data analysis      |
+| `/api/analytics/bid-anomalies`          | Bidding anomaly detection (Z-score + IQR + Isolation Forest) |
 | `/api/analytics/prediction-explanation` | Explainable forecasting (SHAP, falls back to rule-based) |
 | `/api/analytics/prediction-explanation/rule-based` | Rule-based explanation, bypassing SHAP |
 | `/api/analytics/price-model/evaluation` | Feature-engineered RandomForest accuracy + feature importances |
@@ -477,8 +562,10 @@ Key academic components include:
 * Backtesting
 * MAE, RMSE, MAPE, sMAPE Evaluation
 * Outlier Detection
+* Multi-Method Anomaly Detection (Z-score + IQR + Isolation Forest, with method-agreement reporting)
 * Buyer Segmentation
 * Recommendation Systems
+* Decision Support (sell-now-vs-wait) with Decision Backtesting against baseline strategies
 * Explainable Analytics (SHAP on a feature-engineered RandomForest, with a rule-based fallback)
 * Government Market Price Comparison
 
@@ -487,9 +574,6 @@ Key academic components include:
 # 🔮 Future Enhancements
 
 * ARIMA/SARIMA as an additional compared model
-* Statistical (Z-score/IQR) baseline alongside the Isolation Forest anomaly detector
-* Decision backtesting — evaluating the *recommendation engine's* choices against baseline strategies (sell-now, highest-price, etc.), separate from model backtesting above
-* Advanced anomaly detection for suspicious bidding
 * Power BI dashboard
 * Larger crop catalog
 * Real-time analytics

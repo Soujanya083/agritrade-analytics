@@ -1,6 +1,14 @@
 """
 Recommendation engine: "which crop has higher demand in this market?"
 
+This answers a location-specific question - given a place, which crop
+has the best demand-vs-supply gap there right now? It's deliberately
+different from crop_recommendation_score.py, which answers a
+market-wide question - across the whole marketplace, which crop
+performs best on price/activity/stability? Same word
+("recommendation"), different question, different inputs - kept
+separate rather than merged so each stays simple and explainable.
+
 Approach: demand-supply gap scoring.
 - Demand proxy  = bid count + avg bid amount relative to base price (buyer interest)
 - Supply proxy  = number of active crop listings for that crop/region

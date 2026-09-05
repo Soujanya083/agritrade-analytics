@@ -19,7 +19,9 @@ from app.services import (
     market_insights,
     crop_performance,
     price_volatility,
-    crop_recommendation_score
+    crop_recommendation_score,
+    decision_engine,
+    decision_backtesting,
 )
 
 router = APIRouter(
@@ -146,6 +148,31 @@ def get_demand_backtest(
     testDays: int = Query(7)
 ):
     return model_evaluation.backtest_demand_model(cropName, testDays)
+
+
+# ============================================================
+# DECISION SUPPORT & DECISION BACKTESTING
+# ============================================================
+
+@router.get("/decision/sell-or-wait")
+def get_sell_or_wait_decision(
+    cropName: str = Query(...),
+    horizonDays: int = Query(7, ge=1, le=60)
+):
+    """Live sell-now-vs-wait recommendation for a single crop."""
+    return decision_engine.get_sell_or_wait_recommendation(cropName, horizonDays)
+
+
+@router.get("/decision/backtest")
+def get_decision_backtest(
+    horizonDays: int = Query(7, ge=1, le=60)
+):
+    """
+    Backtests the sell-now-vs-wait recommendation against baseline
+    strategies (sell immediately, actual historical outcome) across
+    every completed historical sale with enough context to evaluate.
+    """
+    return decision_backtesting.backtest_decisions(horizonDays)
 
 
 # ============================================================
