@@ -536,15 +536,33 @@ The system always reports "anomalous behaviour" or "unusual bidding pattern" —
 
 # 🧪 Testing
 
-The project includes automated tests using:
+## Automated unit tests
 
-* **pytest**
-
-Run tests using:
+Run with:
 
 ```bash
-pytest
+pytest tests/ -v
 ```
+
+Covers error metrics, walk-forward validation logic, data quality checks, EDA feature engineering, the feature-based price model, anomaly detection, recommendation scoring, and the decision engine/backtest — pure-logic tests using mocked data, no live database required.
+
+## Basic load / response-time testing
+
+`load_test.py` (stdlib only, no `pip install` needed) measures response times — sequential and light concurrent — for both the Node backend and this analytics service's key endpoints, with particular attention to the heaviest ones (walk-forward backtesting, SHAP explanation, decision backtesting).
+
+```bash
+python load_test.py --crop Wheat
+```
+
+**Scope, stated honestly:** this is basic load testing on a single local machine, not a production-scale load test — report it as such.
+
+## Integration testing
+
+See `INTEGRATION_TESTING.md` in the project root — a manual checklist covering the full frontend → backend → analytics → database chain, which nothing automated currently exercises end-to-end.
+
+## Usability feedback
+
+See `USABILITY_FEEDBACK.md` in the project root — a structured questionnaire for 5–10 real users, with guidance on reporting results honestly (as usability feedback, not a formal user study).
 
 ---
 
