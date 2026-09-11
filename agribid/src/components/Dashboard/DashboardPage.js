@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import './DashboardPage.css';
 import AnalyticsPanel from './AnalyticsPanel';
+import MarketIntelligenceDashboard from './MarketIntelligenceDashboard';
 
 const API_BASE =
   process.env.REACT_APP_API_BASE_URL ||
@@ -968,6 +969,15 @@ const DashboardPage = ({ user, onLogout, onNavigate }) => {
               >
                 Analytics
               </button>
+
+              <button
+                className={`nav-link ${
+                  activeTab === 'market-intelligence' ? 'active' : ''
+                }`}
+                onClick={() => setActiveTab('market-intelligence')}
+              >
+                Market Intelligence
+              </button>
             </>
           ) : (
             <>
@@ -1015,6 +1025,15 @@ const DashboardPage = ({ user, onLogout, onNavigate }) => {
               >
                 Analytics
               </button>
+
+              <button
+                className={`nav-link ${
+                  activeTab === 'market-intelligence' ? 'active' : ''
+                }`}
+                onClick={() => setActiveTab('market-intelligence')}
+              >
+                Market Intelligence
+              </button>
             </>
           )}
         </nav>
@@ -1051,6 +1070,20 @@ const DashboardPage = ({ user, onLogout, onNavigate }) => {
             </p>
 
             <AnalyticsPanel />
+          </>
+
+        ) : activeTab === 'market-intelligence' ? (
+
+          <>
+            <h1>Market Intelligence Dashboard</h1>
+
+            <p className="subheading">
+              Research-facing view: data quality, seasonal patterns, market-wide crop scoring,
+              anomaly detection, and decision backtesting - separate from the per-crop
+              operational analytics above.
+            </p>
+
+            <MarketIntelligenceDashboard />
           </>
 
         ) : (
