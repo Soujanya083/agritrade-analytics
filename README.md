@@ -116,18 +116,21 @@ The system forecasts future crop prices using:
 
 * Prophet
 * Linear Regression Baseline
-* ARIMA
+* Naive baseline (used as the bar every other model must beat)
+
+*(ARIMA is planned future work — not yet implemented.)*
 
 ---
 
 ## 🧪 Model Validation & Backtesting
 
-Predictions are validated using historical data.
+Predictions are validated using **walk-forward (rolling-origin) validation**: the training window slides forward through history across multiple folds instead of a single train/test split, so results reflect how the model performs on data it hasn't seen — not one lucky split.
 
-The system compares multiple forecasting models using:
+The system compares Naive, Linear Regression, and Prophet using:
 
 * **MAE — Mean Absolute Error**
 * **RMSE — Root Mean Squared Error**
+* **MAPE / sMAPE — (Symmetric) Mean Absolute Percentage Error**
 
 Instead of blindly trusting predictions, the models are evaluated against actual historical observations.
 
@@ -147,7 +150,7 @@ The system recommends crops based on marketplace demand and supply signals.
 
 ## 🧠 Explainable Analytics
 
-Price behavior is explained using factors such as:
+Predictions are explained using real **SHAP values** from a feature-engineered RandomForest model (previous price, rolling average, season, asking price, crop, location) whenever enough listing history exists. When it doesn't yet, or SHAP isn't available, the system automatically falls back to a rule-based explanation using:
 
 * Historical average price
 * Price trend
@@ -155,7 +158,7 @@ Price behavior is explained using factors such as:
 * Price volatility
 * Recent price level
 
-This helps make the analytics system more transparent and understandable.
+This helps make the analytics system more transparent and understandable, using a real model's attributions where one actually exists rather than a heuristic dressed up as one.
 
 ---
 
@@ -241,9 +244,7 @@ This helps strengthen the reliability of the decision-support system.
 ## 🤖 Machine Learning
 
 * Prophet
-* ARIMA
-* Scikit-learn
-* K-Means Clustering
+* Scikit-learn (Linear Regression, Isolation Forest, K-Means Clustering)
 
 ## 🚀 Analytics API
 
@@ -293,8 +294,7 @@ It includes:
 
 * Price forecasting
 * Demand forecasting
-* Model backtesting
-* ARIMA comparison
+* Walk-forward model backtesting (Naive vs. Linear Regression vs. Prophet)
 * EDA
 * Data quality auditing
 * Buyer segmentation
