@@ -21,6 +21,7 @@ function App() {
         setCurrentView('dashboard');
       } catch (error) {
         localStorage.removeItem('user');
+        localStorage.removeItem('token');
       }
     }
   }, []);
@@ -37,6 +38,7 @@ function App() {
 
   const handleLogout = () => {
     localStorage.removeItem('user');
+    localStorage.removeItem('token');
     setCurrentUser(null);
     navigateTo('home');
   };

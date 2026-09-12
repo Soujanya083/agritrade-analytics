@@ -417,7 +417,22 @@ const DashboardPage = ({ user, onLogout, onNavigate }) => {
   const isFarmer = user?.role === 'Farmer';
 
   const fetchJson = async (url, options = {}) => {
-    const response = await fetch(url, options);
+    const token = localStorage.getItem('token');
+    const headers = {
+      ...(options.headers || {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+
+    const response = await fetch(url, { ...options, headers });
+
+    if (response.status === 401) {
+      // Token missing/expired - force back to login rather than
+      // showing a confusing generic error.
+      localStorage.removeItem('user');
+      localStorage.removeItem('token');
+      if (onLogout) onLogout();
+      throw new Error('Session expired. Please log in again.');
+    }
 
     const data = await response.json();
 
@@ -667,7 +682,6 @@ const DashboardPage = ({ user, onLogout, onNavigate }) => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          farmerId: userId,
           cropName: uploadData.cropName,
           variety: uploadData.variety,
           quantityKg,
@@ -732,7 +746,6 @@ const DashboardPage = ({ user, onLogout, onNavigate }) => {
         },
         body: JSON.stringify({
           cropId: listing._id,
-          buyerId: userId,
           amount: bidValue,
         }),
       });
@@ -747,12 +760,6 @@ const DashboardPage = ({ user, onLogout, onNavigate }) => {
     try {
       await fetchJson(`${API_BASE}/bids/${bidId}/accept`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          farmerId: userId,
-        }),
       });
 
       await loadData();
@@ -776,12 +783,6 @@ const DashboardPage = ({ user, onLogout, onNavigate }) => {
         `${API_BASE}/transactions/${upiModal.transaction._id}/confirm-upi-payment`,
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            buyerId: userId,
-          }),
         }
       );
 
@@ -804,12 +805,6 @@ const DashboardPage = ({ user, onLogout, onNavigate }) => {
         `${API_BASE}/transactions/${transactionId}/mark-dispatch`,
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            farmerId: userId,
-          }),
         }
       );
 
@@ -841,7 +836,6 @@ const DashboardPage = ({ user, onLogout, onNavigate }) => {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            buyerId: userId,
             otpCode: otpModal.otpCode,
           }),
         }

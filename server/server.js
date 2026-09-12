@@ -2,6 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const path = require('path');
 const Razorpay = require('razorpay');
@@ -13,6 +14,85 @@ const {
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
+
+// JWT_SECRET must be set in production; this fallback only exists so a
+// missing .env doesn't crash local dev. Never rely on the fallback for
+// anything deployed.
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-secret-do-not-use-in-production';
+if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
+  console.error('JWT_SECRET is not set. Refusing to start in production without it.');
+  process.exit(1);
+}
+
+const signToken = (user) => jwt.sign(
+  { id: user._id.toString(), role: user.role },
+  JWT_SECRET,
+  { expiresIn: '7d' },
+);
+
+// Verifies the Bearer token and attaches { id, role } to req.user.
+// Every route that trusts "who is making this request" must use this
+// instead of trusting a farmerId/buyerId the client typed into the body.
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (!token) return res.status(401).json({ message: 'Authentication token required' });
+  try {
+    req.user = jwt.verify(token, JWT_SECRET);
+    return next();
+  } catch (err) {
+    return res.status(401).json({ message: 'Invalid or expired token' });
+  }
+};
+
+// Use on routes where the caller must own the resource identified by a
+// specific param name (e.g. requireOwnerOf('farmerId') on
+// /api/bids/farmer/:farmerId ensures only that farmer can read their own bids).
+const requireOwnerOf = (paramName) => (req, res, next) => {
+  if (String(req.user?.id) !== String(req.params[paramName])) {
+    return res.status(403).json({ message: 'Not authorized to access this resource' });
+  }
+  return next();
+};
+
+// --- Real crop photos (Pexels), used when a farmer doesn't upload their own ---
+// Unlike a hardcoded icon/image list, this works for ANY crop name a
+// farmer types in - the marketplace accepts free text, not a fixed list.
+// In-memory cache keyed by lowercased crop name so repeated listings of
+// the same crop (very common - many farmers list "Tomato") only hit the
+// Pexels API once per crop name for the life of the server process.
+const PEXELS_API_KEY = process.env.PEXELS_API_KEY;
+const cropImageCache = new Map();
+
+const resolveCropImage = async (cropName) => {
+  if (!PEXELS_API_KEY) return null;
+  const key = String(cropName || '').trim().toLowerCase();
+  if (!key) return null;
+  if (cropImageCache.has(key)) return cropImageCache.get(key);
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4000);
+    const response = await fetch(
+      `https://api.pexels.com/v1/search?query=${encodeURIComponent(`${cropName} vegetable farm`)}&per_page=1`,
+      { headers: { Authorization: PEXELS_API_KEY }, signal: controller.signal },
+    );
+    clearTimeout(timeout);
+    if (!response.ok) {
+      cropImageCache.set(key, null);
+      return null;
+    }
+    const data = await response.json();
+    const url = data?.photos?.[0]?.src?.medium || null;
+    cropImageCache.set(key, url);
+    return url;
+  } catch (error) {
+    // Pexels being slow/down should never block listing a crop -
+    // just fall back to the frontend's icon, same as if imageUrl were null.
+    cropImageCache.set(key, null);
+    return null;
+  }
+};
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const isEmailValid = (email) => EMAIL_REGEX.test(String(email || '').toLowerCase().trim());
@@ -279,8 +359,11 @@ app.post('/api/login', async (req, res) => {
     }
     if (!isMatch) return res.status(400).json({ message: 'Invalid password' });
 
+    const token = signToken(user);
+
     res.status(200).json({
       message: 'Login successful!',
+      token,
       user: {
         id: user._id,
         fullName: user.fullName,
@@ -294,13 +377,19 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-app.post('/api/crops', async (req, res) => {
+app.post('/api/crops', authenticateToken, async (req, res) => {
   try {
     const {
-      farmerId, cropName, variety, quantityKg, location, harvestedDate, basePrice, category, imageUrl,
+      cropName, variety, quantityKg, location, harvestedDate, basePrice, category, imageUrl,
     } = req.body;
+    // farmerId now comes from the verified token, not the request body -
+    // a client can no longer list a crop "as" another farmer.
+    const farmerId = req.user.id;
 
-    if (!farmerId || !cropName || !variety || !quantityKg || !location || !harvestedDate || !basePrice) {
+    if (req.user.role !== 'Farmer') {
+      return res.status(403).json({ message: 'Only farmer accounts can list crops' });
+    }
+    if (!cropName || !variety || !quantityKg || !location || !harvestedDate || !basePrice) {
       return res.status(400).json({ message: 'Missing required crop details' });
     }
     if (!isValidObjectId(farmerId)) {
@@ -319,6 +408,11 @@ app.post('/api/crops', async (req, res) => {
       return res.status(400).json({ message: 'Harvested date must be a valid, reasonable date' });
     }
 
+    // If the farmer uploaded their own photo, always prefer it. Only
+    // fetch a stock photo as a fallback so a real farmer's own crop
+    // photo is never overwritten by a generic one.
+    const resolvedImageUrl = imageUrl || await resolveCropImage(cropName);
+
     const crop = await Crop.create({
       farmerId,
       cropName: sanitizeString(cropName),
@@ -329,7 +423,7 @@ app.post('/api/crops', async (req, res) => {
       basePrice: Number(basePrice),
       currentBid: Number(basePrice),
       category: category || 'Grains',
-      imageUrl: imageUrl || null,
+      imageUrl: resolvedImageUrl || null,
       status: 'open',
     });
     res.status(201).json({ message: 'Crop uploaded successfully', crop });
@@ -347,10 +441,16 @@ app.get('/api/crops', async (req, res) => {
   }
 });
 
-app.post('/api/bids', async (req, res) => {
+app.post('/api/bids', authenticateToken, async (req, res) => {
   try {
-    const { cropId, buyerId, amount } = req.body;
+    const { cropId, amount } = req.body;
+    // buyerId comes from the token - a client can no longer bid "as"
+    // another buyer just by knowing their Mongo ID.
+    const buyerId = req.user.id;
 
+    if (req.user.role !== 'Buyer') {
+      return res.status(403).json({ message: 'Only buyer accounts can place bids' });
+    }
     if (!isValidObjectId(cropId) || !isValidObjectId(buyerId)) {
       return res.status(400).json({ message: 'Invalid crop or buyer ID' });
     }
@@ -379,7 +479,7 @@ app.post('/api/bids', async (req, res) => {
   }
 });
 
-app.get('/api/bids/buyer/:buyerId', async (req, res) => {
+app.get('/api/bids/buyer/:buyerId', authenticateToken, requireOwnerOf('buyerId'), async (req, res) => {
   try {
     const bids = await Bid.find({ buyerId: req.params.buyerId })
       .populate('cropId')
@@ -391,7 +491,7 @@ app.get('/api/bids/buyer/:buyerId', async (req, res) => {
   }
 });
 
-app.get('/api/bids/farmer/:farmerId', async (req, res) => {
+app.get('/api/bids/farmer/:farmerId', authenticateToken, requireOwnerOf('farmerId'), async (req, res) => {
   try {
     const crops = await Crop.find({ farmerId: req.params.farmerId }).select('_id').lean();
     const cropIds = crops.map((item) => item._id);
@@ -406,9 +506,9 @@ app.get('/api/bids/farmer/:farmerId', async (req, res) => {
   }
 });
 
-app.post('/api/bids/:bidId/accept', async (req, res) => {
+app.post('/api/bids/:bidId/accept', authenticateToken, async (req, res) => {
   try {
-    const { farmerId } = req.body;
+    const farmerId = req.user.id;
     const { bidId } = req.params;
     if (!isValidObjectId(bidId) || !isValidObjectId(farmerId)) {
       return res.status(400).json({ message: 'Invalid bid or farmer ID' });
@@ -465,9 +565,9 @@ app.post('/api/bids/:bidId/accept', async (req, res) => {
 
 
 // UPI manual confirmation endpoint
-app.post('/api/transactions/:transactionId/confirm-upi-payment', async (req, res) => {
+app.post('/api/transactions/:transactionId/confirm-upi-payment', authenticateToken, async (req, res) => {
   try {
-    const { buyerId } = req.body;
+    const buyerId = req.user.id;
     const { transactionId } = req.params;
     if (!isValidObjectId(transactionId) || !isValidObjectId(buyerId)) {
       return res.status(400).json({ message: 'Invalid transaction or buyer ID' });
@@ -501,11 +601,12 @@ app.post('/api/transactions/:transactionId/confirm-upi-payment', async (req, res
   }
 });
 
-app.post('/api/transactions/:transactionId/verify-payment', async (req, res) => {
+app.post('/api/transactions/:transactionId/verify-payment', authenticateToken, async (req, res) => {
   try {
     const {
-      buyerId, razorpayOrderId, razorpayPaymentId, razorpaySignature,
+      razorpayOrderId, razorpayPaymentId, razorpaySignature,
     } = req.body;
+    const buyerId = req.user.id;
     const { transactionId } = req.params;
     if (!isValidObjectId(transactionId) || !isValidObjectId(buyerId)) {
       return res.status(400).json({ message: 'Invalid transaction or buyer ID' });
@@ -555,9 +656,9 @@ app.post('/api/transactions/:transactionId/verify-payment', async (req, res) => 
   }
 });
 
-app.post('/api/transactions/:transactionId/mark-dispatch', async (req, res) => {
+app.post('/api/transactions/:transactionId/mark-dispatch', authenticateToken, async (req, res) => {
   try {
-    const { farmerId } = req.body;
+    const farmerId = req.user.id;
     const { transactionId } = req.params;
     if (!isValidObjectId(transactionId) || !isValidObjectId(farmerId)) {
       return res.status(400).json({ message: 'Invalid transaction or farmer ID' });
@@ -593,9 +694,10 @@ app.post('/api/transactions/:transactionId/mark-dispatch', async (req, res) => {
   }
 });
 
-app.post('/api/transactions/:transactionId/complete-delivery', async (req, res) => {
+app.post('/api/transactions/:transactionId/complete-delivery', authenticateToken, async (req, res) => {
   try {
-    const { buyerId, otpCode } = req.body;
+    const { otpCode } = req.body;
+    const buyerId = req.user.id;
     const { transactionId } = req.params;
     if (!isValidObjectId(transactionId) || !isValidObjectId(buyerId)) {
       return res.status(400).json({ message: 'Invalid transaction or buyer ID' });
@@ -648,7 +750,7 @@ app.post('/api/transactions/:transactionId/complete-delivery', async (req, res) 
   }
 });
 
-app.get('/api/transactions/user/:userId', async (req, res) => {
+app.get('/api/transactions/user/:userId', authenticateToken, requireOwnerOf('userId'), async (req, res) => {
   try {
     const { role } = req.query;
     const filter = role === 'Farmer' ? { farmerId: req.params.userId } : { buyerId: req.params.userId };
@@ -664,7 +766,7 @@ app.get('/api/transactions/user/:userId', async (req, res) => {
   }
 });
 
-app.get('/api/notifications/:userId', async (req, res) => {
+app.get('/api/notifications/:userId', authenticateToken, requireOwnerOf('userId'), async (req, res) => {
   try {
     const notifications = await Notification.find({ userId: req.params.userId })
       .sort({ createdAt: -1 })
@@ -679,21 +781,22 @@ app.get('/api/notifications/:userId', async (req, res) => {
   }
 });
 
-app.patch('/api/notifications/:notificationId/read', async (req, res) => {
+app.patch('/api/notifications/:notificationId/read', authenticateToken, async (req, res) => {
   try {
-    const notification = await Notification.findByIdAndUpdate(
-      req.params.notificationId,
-      { isRead: true },
-      { new: true },
-    );
+    const notification = await Notification.findById(req.params.notificationId);
     if (!notification) return res.status(404).json({ message: 'Notification not found' });
+    if (String(notification.userId) !== String(req.user.id)) {
+      return res.status(403).json({ message: 'Not authorized to update this notification' });
+    }
+    notification.isRead = true;
+    await notification.save();
     res.status(200).json({ message: 'Notification marked as read', notification });
   } catch (error) {
     res.status(500).json({ message: 'Failed to update notification', error });
   }
 });
 
-app.patch('/api/notifications/user/:userId/read-all', async (req, res) => {
+app.patch('/api/notifications/user/:userId/read-all', authenticateToken, requireOwnerOf('userId'), async (req, res) => {
   try {
     await Notification.updateMany({ userId: req.params.userId, isRead: false }, { isRead: true });
     res.status(200).json({ message: 'All notifications marked as read' });
