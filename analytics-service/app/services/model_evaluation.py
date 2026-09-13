@@ -10,14 +10,16 @@ sense of how a "model" compares to doing nothing clever at all.
 This version uses walk-forward (rolling-origin) validation instead:
 the training window slides forward through history, producing
 several train/test folds, and each fold scores the candidates -
-a Naive baseline, Linear Regression, and (for price) Prophet - so
-average performance across folds can be compared honestly, and a
+a Naive baseline, Linear Regression, Prophet, and ARIMA (for price) -
+so average performance across folds can be compared honestly, and a
 model is only worth using if it beats the Naive baseline.
 
 When there isn't enough history for multiple folds, backtest_*
 falls back to the old single-split behaviour so small datasets
 still return a result instead of an error.
 """
+
+import warnings
 
 import pandas as pd
 import numpy as np
@@ -140,6 +142,44 @@ def _prophet_forecast(train_ds, train_y, horizon: int):
         return None
 
 
+def _arima_forecast(train_y, horizon: int):
+    """
+    Fits a (1,1,1) ARIMA model on a single fold's training window.
+    Order is fixed rather than auto-searched (e.g. via auto_arima) to
+    keep a single backtest run fast across many folds and crops - a
+    per-fold grid search would multiply runtime by however many
+    orders are tried, without necessarily helping a model that's
+    already benchmarked against Naive/Linear/Prophet each fold.
+    (1,1,1) is a reasonable general-purpose starting point: the single
+    differencing (d=1) handles the trend/seasonal drift these price
+    series have, and one AR + one MA term capture short-range
+    dependence without overfitting a short training window.
+
+    Returns None on any failure (too little data for the order,
+    convergence issues, statsmodels not installed, etc.) so a fold
+    can just skip ARIMA rather than aborting the whole backtest -
+    same pattern as _prophet_forecast above.
+    """
+    try:
+        from statsmodels.tsa.arima.model import ARIMA
+
+        if len(train_y) < 10:
+            return None
+
+        with warnings.catch_warnings():
+            # statsmodels warns a lot about convergence on short series;
+            # that's exactly the case _single_split_backtest exists to
+            # catch instead, so it's noise here rather than useful signal.
+            warnings.simplefilter("ignore")
+            model = ARIMA(np.asarray(train_y, dtype=float), order=(1, 1, 1))
+            fitted = model.fit()
+            predictions = fitted.forecast(steps=horizon)
+
+        return np.clip(np.asarray(predictions), 0, None)
+    except Exception:
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Walk-forward (rolling-origin) validation
 # ---------------------------------------------------------------------------
@@ -187,7 +227,7 @@ def _run_walk_forward(series: pd.DataFrame, horizon: int):
     y = series["y"].astype(float).values
     ds = series["ds"]
 
-    per_model_metrics = {"Naive": [], "Linear Regression": [], "Prophet": []}
+    per_model_metrics = {"Naive": [], "Linear Regression": [], "Prophet": [], "ARIMA": []}
     fold_details = []
 
     for fold_index, (train_end, test_end) in enumerate(fold_bounds, start=1):
@@ -207,6 +247,12 @@ def _run_walk_forward(series: pd.DataFrame, horizon: int):
             per_model_metrics["Prophet"].append(_calculate_metrics(test_y, prophet_pred))
         else:
             per_model_metrics["Prophet"].append(None)
+
+        arima_pred = _arima_forecast(train_y, horizon)
+        if arima_pred is not None and len(arima_pred) == horizon:
+            per_model_metrics["ARIMA"].append(_calculate_metrics(test_y, arima_pred))
+        else:
+            per_model_metrics["ARIMA"].append(None)
 
         fold_details.append({
             "fold": fold_index,
