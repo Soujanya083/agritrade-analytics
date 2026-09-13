@@ -6,14 +6,40 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const path = require('path');
 const Razorpay = require('razorpay');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 const {
   isValidObjectId, isPositiveNumber, isNonEmptyString, isValidPhone, isValidLength, isReasonableDate, sanitizeString,
 } = require('./validators');
 
 const app = express();
+app.use(helmet());
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
+
+// General limiter: generous enough not to interfere with normal use
+// (dashboard polling, browsing listings), just stops a runaway
+// script/bot from hammering the API.
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many requests, please try again later.' },
+});
+app.use(generalLimiter);
+
+// Tighter limiter specifically for login/signup - these are the routes
+// worth protecting against brute-force/credential-stuffing attempts,
+// so they get a stricter cap than everything else.
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many attempts, please try again in a few minutes.' },
+});
 
 // JWT_SECRET must be set in production; this fallback only exists so a
 // missing .env doesn't crash local dev. Never rely on the fallback for
@@ -194,7 +220,7 @@ app.get('/api/health', (req, res) => res.status(200).json({
   razorpayKeyId: process.env.RAZORPAY_KEY_ID || null,
 }));
 
-app.post('/api/signup', async (req, res) => {
+app.post('/api/signup', authLimiter, async (req, res) => {
   try {
     const {
       role, fullName, email, phone, location, password, confirmPassword, deliveryAddress,
@@ -265,7 +291,7 @@ app.post('/api/signup', async (req, res) => {
   }
 });
 
-app.post('/api/verify-otp', async (req, res) => {
+app.post('/api/verify-otp', authLimiter, async (req, res) => {
   try {
     const { email, otp } = req.body;
     const normalizedEmail = String(email || '').toLowerCase().trim();
@@ -322,7 +348,7 @@ app.post('/api/resend-otp', async (req, res) => {
   }
 });
 
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', authLimiter, async (req, res) => {
   try {
     const { email, password, role, phone } = req.body;
     const normalizedEmail = String(email || '').toLowerCase().trim();
