@@ -24,7 +24,7 @@ your report are drawn from a genuine multi-fold average instead of
 import argparse
 import os
 import random
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 from pymongo import MongoClient
 import bcrypt
@@ -112,7 +112,7 @@ def make_users():
             "role": "Farmer", "fullName": f"Seed Farmer {i+1}",
             "email": f"seed.farmer{i+1}@test.com", "phone": f"90000000{i:02d}",
             "location": loc, "isVerified": True, "password": hashed_pw,
-            "createdAt": datetime.utcnow(), "updatedAt": datetime.utcnow(),
+            "createdAt": datetime.now(timezone.utc), "updatedAt": datetime.now(timezone.utc),
         })
     for i in range(10):
         loc = LOCATIONS[i % len(LOCATIONS)]
@@ -121,7 +121,7 @@ def make_users():
             "email": f"seed.buyer{i+1}@test.com", "phone": f"91000000{i:02d}",
             "location": loc, "deliveryAddress": f"{loc} warehouse road",
             "isVerified": True, "password": hashed_pw,
-            "createdAt": datetime.utcnow(), "updatedAt": datetime.utcnow(),
+            "createdAt": datetime.now(timezone.utc), "updatedAt": datetime.now(timezone.utc),
         })
     farmer_ids = db["users"].insert_many(farmers).inserted_ids
     buyer_ids = db["users"].insert_many(buyers).inserted_ids
@@ -133,7 +133,7 @@ def make_crops_bids_transactions(farmer_ids, buyer_ids, history_days, crop_image
     import math
 
     crops_docs, bids_docs, tx_docs = [], [], []
-    start_date = datetime.utcnow() - timedelta(days=history_days)
+    start_date = datetime.now(timezone.utc) - timedelta(days=history_days)
 
     for day_offset in range(history_days):
         day = start_date + timedelta(days=day_offset)
