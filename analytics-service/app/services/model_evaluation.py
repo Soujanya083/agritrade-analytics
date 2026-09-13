@@ -197,6 +197,37 @@ def _walk_forward_fold_bounds(series_len: int, min_train_size: int, horizon: int
     return folds
 
 
+# Prophet (and to a lesser extent ARIMA) get re-fit from scratch on every
+# fold, and a Prophet fit alone typically takes 1-3 seconds. With a small
+# step size, a long history (e.g. 270 days of seed data) produces 40+
+# folds, which turns one backtest call - fired directly from the
+# AnalyticsPanel on page load - into a minute-plus wait. Capping folds
+# keeps the response snappy while still giving a statistically meaningful
+# multi-fold comparison (8 folds is still far better evidence than the
+# single-split fallback below). More history no longer means a slower
+# UI - it just means each fold's training window can grow further back.
+MAX_WALK_FORWARD_FOLDS = 8
+
+
+def _walk_forward_step(series_len: int, min_train_size: int, horizon: int, default_step: int) -> int:
+    """
+    Widens the step between folds so the total fold count stays capped
+    at MAX_WALK_FORWARD_FOLDS, regardless of how much history is available.
+    Short series just use default_step as before (they were never the
+    slow case - there aren't enough points to generate many folds anyway).
+    """
+    available_range = series_len - min_train_size - horizon
+    if available_range <= 0:
+        return default_step
+
+    naive_fold_count = available_range // default_step + 1
+    if naive_fold_count <= MAX_WALK_FORWARD_FOLDS:
+        return default_step
+
+    widened_step = -(-available_range // (MAX_WALK_FORWARD_FOLDS - 1))  # ceil division
+    return max(default_step, widened_step)
+
+
 def _average_metrics(fold_metric_list):
     valid = [m for m in fold_metric_list if m is not None]
     if not valid:
@@ -217,7 +248,7 @@ def _run_walk_forward(series: pd.DataFrame, horizon: int):
 
     n = len(series)
     min_train_size = max(10, horizon * 2)
-    step = max(1, horizon // 2)
+    step = _walk_forward_step(n, min_train_size, horizon, default_step=max(1, horizon // 2))
 
     fold_bounds = _walk_forward_fold_bounds(n, min_train_size, horizon, step)
 
@@ -379,7 +410,7 @@ def backtest_demand_model(crop_name: str, test_days: int = 7) -> dict:
     n = len(series)
     horizon = test_days
     min_train_size = max(10, horizon * 2)
-    step = max(1, horizon // 2)
+    step = _walk_forward_step(n, min_train_size, horizon, default_step=max(1, horizon // 2))
 
     fold_bounds = _walk_forward_fold_bounds(n, min_train_size, horizon, step)
 
