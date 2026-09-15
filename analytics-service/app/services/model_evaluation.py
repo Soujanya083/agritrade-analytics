@@ -10,9 +10,11 @@ sense of how a "model" compares to doing nothing clever at all.
 This version uses walk-forward (rolling-origin) validation instead:
 the training window slides forward through history, producing
 several train/test folds, and each fold scores the candidates -
-a Naive baseline, Linear Regression, Prophet, and ARIMA (for price) -
-so average performance across folds can be compared honestly, and a
-model is only worth using if it beats the Naive baseline.
+a Naive baseline, Linear Regression, Prophet, ARIMA, and a simple
+equal-weighted Ensemble of whichever of those four produced a usable
+forecast that fold - so average performance across folds can be
+compared honestly, and a model is only worth using if it beats the
+Naive baseline.
 
 When there isn't enough history for multiple folds, backtest_*
 falls back to the old single-split behaviour so small datasets
@@ -258,7 +260,7 @@ def _run_walk_forward(series: pd.DataFrame, horizon: int):
     y = series["y"].astype(float).values
     ds = series["ds"]
 
-    per_model_metrics = {"Naive": [], "Linear Regression": [], "Prophet": [], "ARIMA": []}
+    per_model_metrics = {"Naive": [], "Linear Regression": [], "Prophet": [], "ARIMA": [], "Ensemble": []}
     fold_details = []
 
     for fold_index, (train_end, test_end) in enumerate(fold_bounds, start=1):
@@ -266,24 +268,42 @@ def _run_walk_forward(series: pd.DataFrame, horizon: int):
         train_ds = ds[:train_end]
         test_y = y[train_end:test_end]
 
-        per_model_metrics["Naive"].append(
-            _calculate_metrics(test_y, _naive_forecast(train_y, horizon))
-        )
-        per_model_metrics["Linear Regression"].append(
-            _calculate_metrics(test_y, _linear_forecast(train_y, horizon))
-        )
+        naive_pred = _naive_forecast(train_y, horizon)
+        linear_pred = _linear_forecast(train_y, horizon)
+        per_model_metrics["Naive"].append(_calculate_metrics(test_y, naive_pred))
+        per_model_metrics["Linear Regression"].append(_calculate_metrics(test_y, linear_pred))
 
         prophet_pred = _prophet_forecast(train_ds, train_y, horizon)
         if prophet_pred is not None and len(prophet_pred) == horizon:
             per_model_metrics["Prophet"].append(_calculate_metrics(test_y, prophet_pred))
         else:
+            prophet_pred = None
             per_model_metrics["Prophet"].append(None)
 
         arima_pred = _arima_forecast(train_y, horizon)
         if arima_pred is not None and len(arima_pred) == horizon:
             per_model_metrics["ARIMA"].append(_calculate_metrics(test_y, arima_pred))
         else:
+            arima_pred = None
             per_model_metrics["ARIMA"].append(None)
+
+        # Ensemble: simple equal-weighted average of whichever of the four
+        # models actually produced a usable forecast this fold. Averaged
+        # per-fold from each model's own forecast for that fold - never
+        # using this fold's test values to pick weights, so there's no
+        # look-ahead leakage. Weighting by "past folds' accuracy" was
+        # considered instead of equal weights, but that only starts
+        # working after several folds have already run and adds a second
+        # thing to get wrong; equal-weight averaging is the standard
+        # simple baseline ensemble and already reliably reduces variance
+        # versus any single model. Skipped when fewer than 2 models are
+        # available - averaging one model with itself isn't an ensemble.
+        ensemble_inputs = [p for p in (naive_pred, linear_pred, prophet_pred, arima_pred) if p is not None]
+        if len(ensemble_inputs) >= 2:
+            ensemble_pred = np.mean(np.vstack(ensemble_inputs), axis=0)
+            per_model_metrics["Ensemble"].append(_calculate_metrics(test_y, ensemble_pred))
+        else:
+            per_model_metrics["Ensemble"].append(None)
 
         fold_details.append({
             "fold": fold_index,
