@@ -206,8 +206,10 @@ const SignupPage = ({ onNavigate }) => {
               </div>
               <button type="button" className="signup-btn green-btn" onClick={handleVerifyOtp}>Verify OTP</button>
               <button type="button" className="signup-btn blue-btn" onClick={handleResendOtp}>Resend OTP</button>
-              {verificationState.serverOtp && process.env.NODE_ENV === 'development' && (
-                <p className="otp-debug">Development OTP: {verificationState.serverOtp}</p>
+              {verificationState.serverOtp && (
+                <p className="otp-debug">
+                  Demo Mode - no email/SMS provider is connected, so your OTP is shown here: {verificationState.serverOtp}
+                </p>
               )}
             </>
           )}

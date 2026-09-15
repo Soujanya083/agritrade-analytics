@@ -284,7 +284,12 @@ app.post('/api/signup', authLimiter, async (req, res) => {
         deliveryAddress: newUser.deliveryAddress,
       },
       otpSent: true,
-      otp: process.env.NODE_ENV === 'development' ? otpCode : undefined,
+      // No real email/SMS provider is wired up - this app doesn't have
+      // one, so without this, an account could never actually be
+      // verified outside local dev. Always returning it (not just in
+      // development) is a deliberate demo-mode choice, not an oversight -
+      // a real deployment would replace this with an actual send.
+      otp: otpCode,
     });
   } catch (error) {
     res.status(500).json({ message: 'Server Error', error });
@@ -341,7 +346,8 @@ app.post('/api/resend-otp', async (req, res) => {
 
     res.status(200).json({
       message: 'OTP resent successfully',
-      otp: process.env.NODE_ENV === 'development' ? otpCode : undefined,
+      // Same demo-mode reasoning as the signup endpoint above.
+      otp: otpCode,
     });
   } catch (error) {
     res.status(500).json({ message: 'Failed to resend OTP', error });
