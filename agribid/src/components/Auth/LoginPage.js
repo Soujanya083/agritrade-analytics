@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import './LoginPage.css';
 
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || `http://${window.location.hostname || 'localhost'}:5000`;
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || `http://${window.location.hostname || 'localhost'}:5000/api`;
 
 const LoginPage = ({ onNavigate, onLoginSuccess }) => {
     const [activeRole, setActiveRole] = useState('Farmer');
@@ -15,7 +15,7 @@ const LoginPage = ({ onNavigate, onLoginSuccess }) => {
         setIsSubmitting(true);
 
         try {
-            const response = await fetch(`${API_BASE_URL}/api/login`, {
+            const response = await fetch(`${API_BASE_URL}/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email, password, role: activeRole, phone }),

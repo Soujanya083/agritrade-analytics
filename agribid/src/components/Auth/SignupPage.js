@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import './SignupPage.css';
 
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || `http://${window.location.hostname || 'localhost'}:5000`;
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || `http://${window.location.hostname || 'localhost'}:5000/api`;
 
 const SignupPage = ({ onNavigate }) => {
   const [role, setRole] = useState('Farmer');
@@ -29,7 +29,7 @@ const SignupPage = ({ onNavigate }) => {
 
   const handleVerifyOtp = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/verify-otp`, {
+      const response = await fetch(`${API_BASE_URL}/verify-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: verificationState.email, otp: verificationState.otp }),
@@ -50,7 +50,7 @@ const SignupPage = ({ onNavigate }) => {
 
   const handleResendOtp = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/resend-otp`, {
+      const response = await fetch(`${API_BASE_URL}/resend-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: verificationState.email || formData.email }),
@@ -90,7 +90,7 @@ const SignupPage = ({ onNavigate }) => {
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/signup`, {
+      const response = await fetch(`${API_BASE_URL}/signup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ role, ...formData }),
