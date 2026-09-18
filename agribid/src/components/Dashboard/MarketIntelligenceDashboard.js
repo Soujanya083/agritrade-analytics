@@ -327,6 +327,115 @@ const MarketIntelligenceDashboard = () => {
       </div>
 
       {/* ========================================== */}
+      {/* MARKETPLACE PATTERN ANOMALIES */}
+      {/* ========================================== */}
+
+      <div style={cardStyle}>
+        <h3>Bidding Pattern Anomalies</h3>
+        <p style={{ fontSize: '13px', color: '#666' }}>
+          Separate from the amount-based checks above: these look at bidding{' '}
+          <em>behaviour</em> - a buyer bidding on their own listing, an unusually fast burst
+          of bids from one buyer, and bids that jump far above the previous bid on the same crop.
+        </p>
+        {anomalies?.patternAnomalies ? (
+          <>
+            <div>
+              <StatBox label="Self-Dealing" value={anomalies.patternAnomalies.selfDealingCount} />
+              <StatBox label="Rapid-Fire Buyers" value={anomalies.patternAnomalies.rapidFireBuyerCount} />
+              <StatBox label="Unrealistic Jumps" value={anomalies.patternAnomalies.unrealisticJumpCount} />
+            </div>
+
+            {anomalies.patternAnomalies.selfDealing?.length > 0 && (
+              <>
+                <h4 style={{ fontSize: '13px', marginTop: '12px', marginBottom: '4px' }}>Self-Dealing</h4>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      <th style={thStyle}>User</th>
+                      <th style={thStyle}>Crop</th>
+                      <th style={thStyle}>When</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {anomalies.patternAnomalies.selfDealing.slice(0, 10).map((row, index) => (
+                      <tr key={index}>
+                        <td style={tdStyle}>{row.userId}</td>
+                        <td style={tdStyle}>{row.cropId}</td>
+                        <td style={tdStyle}>{row.createdAt}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
+            )}
+
+            {anomalies.patternAnomalies.rapidFireBidding?.length > 0 && (
+              <>
+                <h4 style={{ fontSize: '13px', marginTop: '12px', marginBottom: '4px' }}>Rapid-Fire Bidding</h4>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      <th style={thStyle}>Buyer</th>
+                      <th style={thStyle}>Bids in Window</th>
+                      <th style={thStyle}>Window Start</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {anomalies.patternAnomalies.rapidFireBidding.slice(0, 10).map((row, index) => (
+                      <tr key={index}>
+                        <td style={tdStyle}>{row.buyerId}</td>
+                        <td style={tdStyle}>{row.bidsInWindow} in {row.windowMinutes} min</td>
+                        <td style={tdStyle}>{row.windowStart}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
+            )}
+
+            {anomalies.patternAnomalies.unrealisticJumps?.length > 0 && (
+              <>
+                <h4 style={{ fontSize: '13px', marginTop: '12px', marginBottom: '4px' }}>Unrealistic Bid Jumps</h4>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      <th style={thStyle}>Crop</th>
+                      <th style={thStyle}>Previous Bid</th>
+                      <th style={thStyle}>New Bid</th>
+                      <th style={thStyle}>Jump</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {anomalies.patternAnomalies.unrealisticJumps.slice(0, 10).map((row, index) => (
+                      <tr key={index}>
+                        <td style={tdStyle}>{row.cropId}</td>
+                        <td style={tdStyle}>{row.previousBid}</td>
+                        <td style={tdStyle}>{row.newBid}</td>
+                        <td style={{ ...tdStyle, color: '#d9534f', fontWeight: 600 }}>+{row.percentJump}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
+            )}
+
+            {anomalies.patternAnomalies.selfDealingCount === 0 &&
+              anomalies.patternAnomalies.rapidFireBuyerCount === 0 &&
+              anomalies.patternAnomalies.unrealisticJumpCount === 0 && (
+                <p style={{ fontSize: '13px', color: '#666' }}>No pattern anomalies detected.</p>
+            )}
+
+            <p style={noteStyle}>
+              These flag patterns worth a manual look, not confirmed fraud - there's no
+              labelled fraud data to validate a fraud claim against.
+            </p>
+          </>
+        ) : (
+          <p>{anomalies?.error || 'Not enough bidding data yet for pattern analysis.'}</p>
+        )}
+      </div>
+
+      {/* ========================================== */}
       {/* DECISION BACKTESTING */}
       {/* ========================================== */}
 
