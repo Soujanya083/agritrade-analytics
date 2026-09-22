@@ -22,6 +22,7 @@ from app.services import (
     crop_recommendation_score,
     decision_engine,
     decision_backtesting,
+    market_recommendation,
 )
 
 router = APIRouter(
@@ -225,6 +226,19 @@ def get_mandi_compare(
         cropName,
         predicted_price,
         state
+    )
+
+
+@router.get("/market-recommendation")
+def get_market_recommendation(
+    cropName: str = Query(...),
+    farmerState: str = Query(None),
+    quantityKg: float = Query(None)
+):
+    return market_recommendation.get_market_recommendation(
+        cropName,
+        farmerState,
+        quantityKg
     )
 
 
