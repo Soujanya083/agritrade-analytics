@@ -115,10 +115,10 @@ AgriTrade AI includes an analytics intelligence layer built on actual marketplac
 The system forecasts future crop prices using:
 
 * Prophet
+* ARIMA
 * Linear Regression Baseline
 * Naive baseline (used as the bar every other model must beat)
-
-*(ARIMA is planned future work — not yet implemented.)*
+* **Ensemble** — equal-weighted average of whichever of the above models produce a usable forecast for a given fold
 
 ---
 
@@ -126,7 +126,7 @@ The system forecasts future crop prices using:
 
 Predictions are validated using **walk-forward (rolling-origin) validation**: the training window slides forward through history across multiple folds instead of a single train/test split, so results reflect how the model performs on data it hasn't seen — not one lucky split.
 
-The system compares Naive, Linear Regression, and Prophet using:
+The system compares Naive, Linear Regression, Prophet, ARIMA, and Ensemble using:
 
 * **MAE — Mean Absolute Error**
 * **RMSE — Root Mean Squared Error**
@@ -142,9 +142,11 @@ Historical marketplace activity is analyzed to estimate future demand.
 
 ---
 
-## 🌾 Crop Recommendation Engine
+## 🌾 Market Recommendation Engine (Expected Net Profit)
 
-The system recommends crops based on marketplace demand and supply signals.
+Given a crop, the farmer's state, and quantity, the system pulls real, live AGMARKNET market records across multiple markets and ranks them by **Expected Net Profit** — modal price minus a disclosed transport-cost tier (same-state vs. cross-state) minus a disclosed flat storage cost — rather than raw price alone. Assumptions are returned alongside the ranking, not hidden. See `market_recommendation.py`.
+
+The system also separately recommends crops based on marketplace demand and supply signals (`recommendation.py`).
 
 ---
 
@@ -244,12 +246,14 @@ This helps strengthen the reliability of the decision-support system.
 ## 🤖 Machine Learning
 
 * Prophet
+* statsmodels (ARIMA)
 * Scikit-learn (Linear Regression, Isolation Forest, K-Means Clustering)
 
 ## 🚀 Analytics API
 
 * FastAPI
 * Uvicorn
+* `GET /api/analytics/market-recommendation` — Net Profit market ranking (new)
 
 ## 💳 Payment Integration
 
@@ -292,15 +296,16 @@ analytics-service/
 
 It includes:
 
-* Price forecasting
+* Price forecasting (Naive, Linear Regression, Prophet, ARIMA, Ensemble)
 * Demand forecasting
-* Walk-forward model backtesting (Naive vs. Linear Regression vs. Prophet)
+* Walk-forward model backtesting across all five forecasting models
 * EDA
 * Data quality auditing
-* Buyer segmentation
-* Recommendation engine
-* Explainable analytics
-* Market price comparison
+* Buyer segmentation (RFM + K-Means)
+* Market Recommendation Engine (Expected Net Profit ranking across real markets)
+* Crop demand/supply recommendation engine
+* Explainable analytics (SHAP)
+* Market price comparison and validation against real AGMARKNET data
 
 See the Analytics Service documentation for detailed information.
 
