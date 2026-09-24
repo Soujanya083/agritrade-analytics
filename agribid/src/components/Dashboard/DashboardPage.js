@@ -799,6 +799,69 @@ const DashboardPage = ({ user, onLogout, onNavigate }) => {
     }
   };
 
+  // Real Razorpay checkout: creates an order via the backend, opens
+  // Razorpay's hosted checkout, and on success sends the signed
+  // response to /verify-payment. This was previously dead code from
+  // the frontend's side - verify-payment existed but nothing ever
+  // called create-order or opened the checkout widget, so it could
+  // never actually succeed. Requires window.Razorpay, loaded via the
+  // checkout.js script tag in public/index.html.
+  const startRazorpayPayment = async (transaction) => {
+    if (!window.Razorpay) {
+      window.alert('Payment gateway failed to load. Check your internet connection and try again.');
+      return;
+    }
+
+    try {
+      const order = await fetchJson(
+        `${API_BASE}/transactions/${transaction._id}/create-order`,
+        { method: 'POST' }
+      );
+
+      const rzp = new window.Razorpay({
+        key: order.keyId,
+        amount: order.amount,
+        currency: order.currency,
+        order_id: order.orderId,
+        name: 'AgriTrade AI',
+        description: `Payment for ${transaction.cropId?.cropName || 'crop purchase'}`,
+        handler: async (response) => {
+          try {
+            await fetchJson(
+              `${API_BASE}/transactions/${transaction._id}/verify-payment`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  razorpayOrderId: response.razorpay_order_id,
+                  razorpayPaymentId: response.razorpay_payment_id,
+                  razorpaySignature: response.razorpay_signature,
+                }),
+              }
+            );
+            window.alert('Payment verified successfully.');
+            await loadData();
+          } catch (error) {
+            // Order was paid on Razorpay's side but our signature check
+            // failed or the request errored - don't tell the buyer it
+            // succeeded when we can't confirm that ourselves.
+            window.alert(`Payment made, but verification failed: ${error.message}. Please contact support.`);
+          }
+        },
+        modal: {
+          ondismiss: () => {
+            // Buyer closed the checkout without paying. Transaction
+            // stays in awaiting_payment - they can just retry.
+          },
+        },
+      });
+
+      rzp.open();
+    } catch (error) {
+      window.alert(error.message);
+    }
+  };
+
   const markDispatch = async (transactionId) => {
     try {
       await fetchJson(
@@ -1564,6 +1627,21 @@ const DashboardPage = ({ user, onLogout, onNavigate }) => {
                             }
                           >
                             Pay Now (UPI)
+                          </button>
+
+                        )}
+
+                      {!isFarmer &&
+                        txn.status === 'awaiting_payment' && (
+
+                          <button
+                            className="bid-btn"
+                            onClick={() =>
+                              startRazorpayPayment(txn)
+                            }
+                            style={{ marginLeft: '8px' }}
+                          >
+                            Pay Now (Card/Netbanking)
                           </button>
 
                         )}

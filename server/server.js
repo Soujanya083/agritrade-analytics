@@ -490,20 +490,39 @@ app.post('/api/bids', authenticateToken, async (req, res) => {
       return res.status(400).json({ message: 'Bid amount must be a valid positive number' });
     }
 
-    const crop = await Crop.findById(cropId);
-    if (!crop) return res.status(404).json({ message: 'Crop not found' });
-    if (crop.status !== 'open') return res.status(400).json({ message: 'This crop is no longer open for bidding' });
-    if (Number(amount) <= Number(crop.currentBid)) {
+    // Atomic conditional update instead of read-then-write: two bids
+    // arriving close together used to both read the same stale
+    // crop.currentBid, both pass the ">" check against it, and then
+    // whichever .save() landed last would win - even if it was the
+    // lower bid. MongoDB serializes writes to a single document, so
+    // only one concurrent request can match this filter and win at a
+    // time; a second bid re-checks against whatever currentBid the
+    // first one just set, not a stale value.
+    const crop = await Crop.findOneAndUpdate(
+      { _id: cropId, status: 'open', currentBid: { $lt: Number(amount) } },
+      { $set: { currentBid: Number(amount) } },
+      { new: true },
+    );
+
+    if (!crop) {
+      // The atomic update above can't tell us *why* it didn't match, so
+      // do one extra read purely to give the buyer a correct error
+      // message - this read has no effect on correctness, since the
+      // update itself already made the real decision atomically.
+      const existing = await Crop.findById(cropId);
+      if (!existing) return res.status(404).json({ message: 'Crop not found' });
+      if (existing.status !== 'open') {
+        return res.status(400).json({ message: 'This crop is no longer open for bidding' });
+      }
       return res.status(400).json({ message: 'Bid must be higher than current bid' });
     }
+
     const bid = await Bid.create({
       cropId,
       buyerId,
       amount: Number(amount),
       status: 'active',
     });
-    crop.currentBid = Number(amount);
-    await crop.save();
     await createNotification(crop.farmerId, `New bid of INR ${Number(amount).toLocaleString()} received for ${crop.cropName}.`, 'bid');
     res.status(201).json({ message: 'Bid placed successfully', bid });
   } catch (error) {
@@ -595,6 +614,64 @@ app.post('/api/bids/:bidId/accept', authenticateToken, async (req, res) => {
   }
 });
 
+
+// Creates a real Razorpay order and stores its ID on the transaction, so
+// that /verify-payment (below) has something real to check the buyer's
+// signature against. Without this endpoint, transaction.razorpayOrderId
+// stays null forever and /verify-payment can never succeed - this was a
+// genuine gap: the signature-verification code existed, but nothing ever
+// created the order it verifies against.
+app.post('/api/transactions/:transactionId/create-order', authenticateToken, async (req, res) => {
+  try {
+    if (!razorpay) {
+      return res.status(503).json({
+        message: 'Online payment is not configured on this server. Use UPI confirmation instead.',
+      });
+    }
+    const buyerId = req.user.id;
+    const { transactionId } = req.params;
+    if (!isValidObjectId(transactionId) || !isValidObjectId(buyerId)) {
+      return res.status(400).json({ message: 'Invalid transaction or buyer ID' });
+    }
+    const transaction = await Transaction.findById(transactionId);
+    if (!transaction) return res.status(404).json({ message: 'Transaction not found' });
+    if (String(transaction.buyerId) !== String(buyerId)) {
+      return res.status(403).json({ message: 'Not authorized for this payment' });
+    }
+    if (transaction.status !== 'awaiting_payment') {
+      return res.status(400).json({ message: 'Payment already completed for this transaction' });
+    }
+
+    // Reuse an already-created order rather than creating a duplicate one
+    // if the buyer opens the checkout modal more than once.
+    if (transaction.razorpayOrderId) {
+      return res.status(200).json({
+        orderId: transaction.razorpayOrderId,
+        amount: Math.round(Number(transaction.totalAmount) * 100),
+        currency: 'INR',
+        keyId: process.env.RAZORPAY_KEY_ID,
+      });
+    }
+
+    const order = await razorpay.orders.create({
+      amount: Math.round(Number(transaction.totalAmount) * 100), // Razorpay wants paise, not rupees
+      currency: 'INR',
+      receipt: String(transaction._id),
+    });
+
+    transaction.razorpayOrderId = order.id;
+    await transaction.save();
+
+    res.status(200).json({
+      orderId: order.id,
+      amount: order.amount,
+      currency: order.currency,
+      keyId: process.env.RAZORPAY_KEY_ID,
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to create payment order', error: error.message });
+  }
+});
 
 // UPI manual confirmation endpoint
 app.post('/api/transactions/:transactionId/confirm-upi-payment', authenticateToken, async (req, res) => {

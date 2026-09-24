@@ -21,13 +21,41 @@ beforeAll(async () => {
     if (mongoose.connection.readyState === 1) return resolve();
     mongoose.connection.once('open', resolve);
   });
-});
+}, 30000);
 
 afterAll(async () => {
   await mongoose.connection.dropDatabase();
   await mongoose.connection.close();
   await mongoServer.stop();
 });
+
+// Signs a user up, verifies their OTP (returned directly in the signup
+// response - see server.js's own demo-mode comment on that), then logs
+// in for a real JWT. /api/crops and /api/bids both require this token
+// via authenticateToken - they used to read farmerId/buyerId straight
+// from the request body, but that changed when JWT auth was added, and
+// this test file was never updated to match until now.
+const registerVerifyAndLogin = async ({ role, fullName, email, phone, deliveryAddress }) => {
+  const signupRes = await request(app).post('/api/signup').send({
+    role,
+    fullName,
+    email,
+    phone,
+    location: 'Pune',
+    password: 'password123',
+    confirmPassword: 'password123',
+    ...(role === 'Buyer' ? { deliveryAddress: deliveryAddress || '123 Test Street, Pune' } : {}),
+  });
+
+  const { otp } = signupRes.body;
+  await request(app).post('/api/verify-otp').send({ email, otp });
+
+  const loginRes = await request(app).post('/api/login').send({
+    email, password: 'password123', role, phone,
+  });
+
+  return { token: loginRes.body.token, userId: loginRes.body.user.id };
+};
 
 describe('POST /api/signup', () => {
   test('rejects an alphanumeric phone number', async () => {
@@ -88,134 +116,133 @@ describe('POST /api/signup', () => {
 });
 
 describe('POST /api/crops (data validation protecting the ML pipeline)', () => {
-  let farmerId;
+  let farmerToken;
 
   beforeAll(async () => {
-    const signupRes = await request(app).post('/api/signup').send({
+    const farmer = await registerVerifyAndLogin({
       role: 'Farmer',
       fullName: 'Crop Test Farmer',
       email: 'cropfarmer@example.com',
       phone: '9876543211',
-      location: 'Nashik',
-      password: 'password123',
-      confirmPassword: 'password123',
     });
-    farmerId = signupRes.body.user.id;
-  });
+    farmerToken = farmer.token;
+  }, 15000);
 
-  test('rejects a negative price', async () => {
+  test('rejects a request with no auth token', async () => {
+    // farmerId now comes from the verified JWT, not the request body -
+    // this closes the exact "supply someone else's farmerId" spoofing
+    // risk the old "rejects an invalid farmer ID" test used to check
+    // for; that specific attack is no longer expressible at all, since
+    // there's no farmerId field for a client to spoof in the first
+    // place. What's left to verify is that the route still requires a
+    // token at all.
     const res = await request(app).post('/api/crops').send({
-      farmerId,
       cropName: 'Wheat',
       variety: 'Standard',
       quantityKg: 100,
       location: 'Nashik',
       harvestedDate: new Date().toISOString(),
-      basePrice: -50,
+      basePrice: 20,
     });
+    expect(res.statusCode).toBe(401);
+  });
+
+  test('rejects a negative price', async () => {
+    const res = await request(app)
+      .post('/api/crops')
+      .set('Authorization', `Bearer ${farmerToken}`)
+      .send({
+        cropName: 'Wheat',
+        variety: 'Standard',
+        quantityKg: 100,
+        location: 'Nashik',
+        harvestedDate: new Date().toISOString(),
+        basePrice: -50,
+      });
     expect(res.statusCode).toBe(400);
     expect(res.body.message).toMatch(/positive number/i);
   });
 
-  test('rejects an invalid farmer ID', async () => {
-    const res = await request(app).post('/api/crops').send({
-      farmerId: 'not-a-real-id',
-      cropName: 'Wheat',
-      variety: 'Standard',
-      quantityKg: 100,
-      location: 'Nashik',
-      harvestedDate: new Date().toISOString(),
-      basePrice: 20,
-    });
-    expect(res.statusCode).toBe(400);
-    expect(res.body.message).toMatch(/invalid farmer id/i);
-  });
-
   test('accepts a valid crop listing', async () => {
-    const res = await request(app).post('/api/crops').send({
-      farmerId,
-      cropName: 'Wheat',
-      variety: 'Standard',
-      quantityKg: 100,
-      location: 'Nashik',
-      harvestedDate: new Date().toISOString(),
-      basePrice: 20,
-    });
+    const res = await request(app)
+      .post('/api/crops')
+      .set('Authorization', `Bearer ${farmerToken}`)
+      .send({
+        cropName: 'Wheat',
+        variety: 'Standard',
+        quantityKg: 100,
+        location: 'Nashik',
+        harvestedDate: new Date().toISOString(),
+        basePrice: 20,
+      });
     expect(res.statusCode).toBe(201);
     expect(res.body.crop.cropName).toBe('Wheat');
   });
 });
 
 describe('POST /api/bids (proves the NaN bug fix)', () => {
-  let farmerId;
-  let buyerId;
+  let farmerToken;
+  let buyerToken;
   let cropId;
 
   beforeAll(async () => {
-    const farmerRes = await request(app).post('/api/signup').send({
+    const farmer = await registerVerifyAndLogin({
       role: 'Farmer',
       fullName: 'Bid Test Farmer',
       email: 'bidfarmer@example.com',
       phone: '9876543212',
-      location: 'Pune',
-      password: 'password123',
-      confirmPassword: 'password123',
     });
-    farmerId = farmerRes.body.user.id;
+    farmerToken = farmer.token;
 
-    const buyerRes = await request(app).post('/api/signup').send({
+    const buyer = await registerVerifyAndLogin({
       role: 'Buyer',
       fullName: 'Bid Test Buyer',
       email: 'bidbuyer@example.com',
       phone: '9876543213',
-      location: 'Pune',
-      password: 'password123',
-      confirmPassword: 'password123',
       deliveryAddress: '123 Test Street, Pune',
     });
-    buyerId = buyerRes.body.user.id;
+    buyerToken = buyer.token;
 
-    const cropRes = await request(app).post('/api/crops').send({
-      farmerId,
-      cropName: 'Rice',
-      variety: 'Basmati',
-      quantityKg: 200,
-      location: 'Pune',
-      harvestedDate: new Date().toISOString(),
-      basePrice: 30,
-    });
+    const cropRes = await request(app)
+      .post('/api/crops')
+      .set('Authorization', `Bearer ${farmerToken}`)
+      .send({
+        cropName: 'Rice',
+        variety: 'Basmati',
+        quantityKg: 200,
+        location: 'Pune',
+        harvestedDate: new Date().toISOString(),
+        basePrice: 30,
+      });
     cropId = cropRes.body.crop._id;
-  });
+  }, 20000);
 
   test('rejects a non-numeric bid amount (this was the original bug)', async () => {
     // Before the fix, Number('abc') = NaN, and the old check
     // `Number(amount) <= Number(crop.currentBid)` was FALSE for NaN,
     // so this invalid bid would have been silently accepted.
-    const res = await request(app).post('/api/bids').send({
-      cropId,
-      buyerId,
-      amount: 'abc',
-    });
+    const res = await request(app)
+      .post('/api/bids')
+      .set('Authorization', `Bearer ${buyerToken}`)
+      .send({ cropId, amount: 'abc' });
     expect(res.statusCode).toBe(400);
     expect(res.body.message).toMatch(/positive number/i);
   });
 
   test('rejects a bid lower than or equal to the current price', async () => {
-    const res = await request(app).post('/api/bids').send({
-      cropId,
-      buyerId,
-      amount: 10, // lower than basePrice of 30
-    });
+    const res = await request(app)
+      .post('/api/bids')
+      .set('Authorization', `Bearer ${buyerToken}`)
+      .send({ cropId, amount: 10 }); // lower than basePrice of 30
     expect(res.statusCode).toBe(400);
     expect(res.body.message).toMatch(/higher than current bid/i);
   });
 
   test('accepts a valid bid higher than the current price', async () => {
-    const res = await request(app).post('/api/bids').send({
-      cropId,
-      buyerId,
-      amount: 35,
-    });
+    const res = await request(app)
+      .post('/api/bids')
+      .set('Authorization', `Bearer ${buyerToken}`)
+      .send({ cropId, amount: 35 });
     expect(res.statusCode).toBe(201);
     expect(res.body.bid.amount).toBe(35);
   });
