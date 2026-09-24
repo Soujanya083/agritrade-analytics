@@ -182,6 +182,27 @@ def _arima_forecast(train_y, horizon: int):
         return None
 
 
+def _combine_ensemble(*predictions):
+    """
+    Equal-weighted average of whichever of the given per-fold prediction
+    arrays are not None. Averaged purely from each model's own forecast
+    for that fold - never using this fold's test values to pick weights,
+    so there's no look-ahead leakage. Weighting by "past folds' accuracy"
+    was considered instead of equal weights, but that only starts working
+    after several folds have already run and adds a second thing to get
+    wrong; equal-weight averaging is the standard simple baseline ensemble
+    and already reliably reduces variance versus any single model.
+
+    Returns None (skips the ensemble for this fold) if fewer than 2 of
+    the given predictions are usable - averaging one model with itself,
+    or nothing at all, isn't an ensemble.
+    """
+    valid = [p for p in predictions if p is not None]
+    if len(valid) < 2:
+        return None
+    return np.mean(np.vstack(valid), axis=0)
+
+
 # ---------------------------------------------------------------------------
 # Walk-forward (rolling-origin) validation
 # ---------------------------------------------------------------------------
@@ -287,20 +308,10 @@ def _run_walk_forward(series: pd.DataFrame, horizon: int):
             arima_pred = None
             per_model_metrics["ARIMA"].append(None)
 
-        # Ensemble: simple equal-weighted average of whichever of the four
-        # models actually produced a usable forecast this fold. Averaged
-        # per-fold from each model's own forecast for that fold - never
-        # using this fold's test values to pick weights, so there's no
-        # look-ahead leakage. Weighting by "past folds' accuracy" was
-        # considered instead of equal weights, but that only starts
-        # working after several folds have already run and adds a second
-        # thing to get wrong; equal-weight averaging is the standard
-        # simple baseline ensemble and already reliably reduces variance
-        # versus any single model. Skipped when fewer than 2 models are
-        # available - averaging one model with itself isn't an ensemble.
-        ensemble_inputs = [p for p in (naive_pred, linear_pred, prophet_pred, arima_pred) if p is not None]
-        if len(ensemble_inputs) >= 2:
-            ensemble_pred = np.mean(np.vstack(ensemble_inputs), axis=0)
+        # Ensemble: skipped when fewer than 2 models are available this
+        # fold - see _combine_ensemble's docstring for why.
+        ensemble_pred = _combine_ensemble(naive_pred, linear_pred, prophet_pred, arima_pred)
+        if ensemble_pred is not None:
             per_model_metrics["Ensemble"].append(_calculate_metrics(test_y, ensemble_pred))
         else:
             per_model_metrics["Ensemble"].append(None)

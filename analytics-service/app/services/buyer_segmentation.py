@@ -23,7 +23,7 @@ Approach:
 """
 import pandas as pd
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timezone
 from app.services.data_loader import load_transactions
 
 
@@ -36,7 +36,11 @@ def segment_buyers(n_clusters: int = 3) -> dict:
     if completed.empty or completed["buyerId"].nunique() < n_clusters:
         return {"error": f"Not enough distinct buyers with completed transactions to form {n_clusters} clusters."}
 
-    now = pd.Timestamp(datetime.utcnow())
+    # datetime.utcnow() is deprecated (Python 3.12+); this produces the
+    # same tz-naive UTC timestamp it used to, so the subtraction below
+    # against lastPurchase (itself tz-naive, straight from createdAt)
+    # keeps working exactly as before.
+    now = pd.Timestamp(datetime.now(timezone.utc).replace(tzinfo=None))
     rfm = (
         completed.groupby("buyerId")
         .agg(
