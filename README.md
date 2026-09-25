@@ -41,7 +41,7 @@ Farmers can list crops and connect with potential buyers.
 
 ### 💰 Bidding System
 
-Buyers can place bids on agricultural products.
+Buyers can place bids on agricultural products. Bid placement uses an atomic conditional database update (rather than a read-then-write), so two bids arriving at nearly the same time can't leave the listed price lower than the true highest bid - verified with a dedicated concurrency test (`bid-race-condition.test.js`).
 
 ### 💳 Secure Payment Workflow
 
@@ -134,11 +134,13 @@ The system compares Naive, Linear Regression, Prophet, ARIMA, and Ensemble using
 
 Instead of blindly trusting predictions, the models are evaluated against actual historical observations.
 
+ARIMA's graceful failure on too-short series, and the Ensemble's rule that it only combines a fold's output when at least 2 models produced a usable forecast, both have dedicated unit tests (`test_arima_and_ensemble.py`).
+
 ---
 
 ## 📈 Demand Forecasting
 
-Historical marketplace activity is analyzed to estimate future demand.
+Historical marketplace activity is analyzed to estimate future demand, validated the same way price forecasting is - walk-forward backtesting comparing Naive vs. Linear Regression, with MAE/RMSE reported per model (`backtest_demand_model`, covered by `test_backtest_demand_model.py`).
 
 ---
 
@@ -257,7 +259,8 @@ This helps strengthen the reliability of the decision-support system.
 
 ## 💳 Payment Integration
 
-* Razorpay
+* **UPI (manual confirmation)** - the demonstrated, working payment path used for testing and screenshots.
+* **Razorpay** - order creation, checkout, and signature verification are all implemented and wired end-to-end (`/create-order` endpoint, frontend checkout in `DashboardPage.js`, `/verify-payment` signature check). Not live-tested: generating even test-mode Razorpay credentials now requires PAN-linked KYC, which was intentionally not completed for this project. The integration is code-complete and reviewable; live verification is documented here as a limitation, not silently skipped.
 
 ## ☁️ Deployment
 
