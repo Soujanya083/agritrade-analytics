@@ -25,8 +25,10 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timezone
 from app.services.data_loader import load_transactions
+from app.utils.ttl_cache import ttl_cache
 
 
+@ttl_cache(seconds=300)  # K-Means re-clustering every buyer on every request was the other big slow spot
 def segment_buyers(n_clusters: int = 3) -> dict:
     tx = load_transactions()
     if tx.empty:

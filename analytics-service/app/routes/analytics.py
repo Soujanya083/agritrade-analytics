@@ -242,6 +242,19 @@ def get_market_recommendation(
     )
 
 
+@router.get("/decision-summary")
+def get_crop_decision_summary(
+    cropName: str = Query(...),
+    farmerState: str = Query(None),
+    quantityKg: float = Query(None)
+):
+    return dashboard_summary.get_crop_decision_summary(
+        cropName,
+        farmerState,
+        quantityKg
+    )
+
+
 # ============================================================
 # DATA QUALITY
 # ============================================================

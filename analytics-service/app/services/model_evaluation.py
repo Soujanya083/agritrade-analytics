@@ -28,6 +28,7 @@ import numpy as np
 
 from app.services.price_prediction import _prepare_series
 from app.services.demand_forecast import _prepare_demand_series
+from app.utils.ttl_cache import ttl_cache
 
 
 # ---------------------------------------------------------------------------
@@ -402,6 +403,7 @@ def _single_split_backtest(series: pd.DataFrame, test_days: int, crop_name: str,
     }
 
 
+@ttl_cache(seconds=300)  # 5 min: this reruns a full walk-forward backtest across 5 models otherwise
 def backtest_price_model(crop_name: str, test_days: int = 7) -> dict:
     """
     Backtest crop price prediction using walk-forward validation,
@@ -425,6 +427,7 @@ def backtest_price_model(crop_name: str, test_days: int = 7) -> dict:
     }
 
 
+@ttl_cache(seconds=300)
 def backtest_demand_model(crop_name: str, test_days: int = 7) -> dict:
     """
     Backtest crop demand forecasting using walk-forward validation,
