@@ -286,6 +286,28 @@ const CROP_IMAGES = {
     </svg>
   `),
 
+  orange: encodeSvgDataUri(`
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 320">
+      <rect width="480" height="320" rx="28" fill="#ffedd5"/>
+      <circle cx="240" cy="175" r="68" fill="#f97316"/>
+      <circle cx="240" cy="175" r="68" fill="none" stroke="#ea580c" stroke-width="3"/>
+      <path d="M240 107C246 96 258 92 266 94" stroke="#4d7c0f" stroke-width="7" fill="none"/>
+      <ellipse cx="252" cy="94" rx="14" ry="8" fill="#4d7c0f" transform="rotate(20 252 94)"/>
+      <text x="36" y="286" fill="#9a3412" font-family="Arial" font-size="28" font-weight="700">Orange</text>
+    </svg>
+  `),
+
+  carrot: encodeSvgDataUri(`
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 320">
+      <rect width="480" height="320" rx="28" fill="#ffedd5"/>
+      <path d="M240 100L270 220C270 236 210 236 210 220Z" fill="#fb923c" stroke="#ea580c" stroke-width="3"/>
+      <path d="M225 90C215 65 200 55 185 58" stroke="#16a34a" stroke-width="7" fill="none"/>
+      <path d="M240 88C240 60 240 48 240 42" stroke="#16a34a" stroke-width="7" fill="none"/>
+      <path d="M255 90C265 65 280 55 295 58" stroke="#16a34a" stroke-width="7" fill="none"/>
+      <text x="36" y="286" fill="#9a3412" font-family="Arial" font-size="28" font-weight="700">Carrot</text>
+    </svg>
+  `),
+
   onion: encodeSvgDataUri(`
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 320">
       <rect width="480" height="320" rx="28" fill="#fdf2f8"/>
