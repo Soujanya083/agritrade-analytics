@@ -17,7 +17,9 @@ USAGE
 1. Start your Node backend (usually `npm run dev` in server/, port 5000)
    and your analytics service (`uvicorn app.main:app --reload` in
    analytics-service/, port 8000) locally first.
-2. Make sure at least one crop exists in your database with a name
+2. Analytics endpoints require authentication: log in through the Node API,
+   copy the JWT, and pass it with --token (or set ANALYTICS_LOAD_TEST_TOKEN).
+   Make sure at least one crop exists in your database with a name
    that has some price/bid history - pass it with --crop if it isn't
    "Wheat".
 3. Run:  python load_test.py --crop Wheat
@@ -27,6 +29,7 @@ USAGE
 
 import argparse
 import json
+import os
 import statistics
 import time
 import urllib.error
@@ -35,10 +38,14 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
+HEADERS: dict = {}
+
+
 def _timed_request(url: str, timeout: float = 30.0):
     start = time.perf_counter()
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as response:
+        request = urllib.request.Request(url, headers=HEADERS)
+        with urllib.request.urlopen(request, timeout=timeout) as response:
             response.read()
             status = response.status
     except urllib.error.HTTPError as e:
@@ -46,7 +53,9 @@ def _timed_request(url: str, timeout: float = 30.0):
     except Exception as e:
         return {"success": False, "error": str(e), "elapsedMs": None}
     elapsed_ms = (time.perf_counter() - start) * 1000
-    return {"success": status < 500, "status": status, "elapsedMs": round(elapsed_ms, 1)}
+    # Only 2xx counts as success. (It used to be `< 500`, which would have
+    # reported 401/404/422 responses - now returned for real - as healthy.)
+    return {"success": 200 <= status < 300, "status": status, "elapsedMs": round(elapsed_ms, 1)}
 
 
 def _summarize(timings_ms):
@@ -70,6 +79,9 @@ def run_endpoint_test(name: str, url: str, sequential_requests: int, concurrent_
 
     # Sequential pass: realistic single-user response time.
     sequential_results = [_timed_request(url) for _ in range(sequential_requests)]
+    # The analytics service caches expensive results, so the FIRST request is
+    # the honest "cold" cost and the rest are cache hits. Report them apart.
+    cold_ms = sequential_results[0]["elapsedMs"] if sequential_results else None
     sequential_ok = [r["elapsedMs"] for r in sequential_results if r["success"] and r["elapsedMs"] is not None]
     sequential_failures = [r for r in sequential_results if not r["success"]]
 
@@ -90,6 +102,7 @@ def run_endpoint_test(name: str, url: str, sequential_requests: int, concurrent_
     sequential_summary = _summarize(sequential_ok)
     concurrent_summary = _summarize(concurrent_ok) if concurrent_requests > 0 else None
 
+    print(f"First (cold) request: {cold_ms} ms")
     print(f"Sequential ({sequential_requests} requests, {len(sequential_failures)} failed): {sequential_summary}")
     if concurrent_summary is not None:
         print(f"Concurrent ({concurrent_requests} at once, {len(concurrent_failures)} failed): {concurrent_summary}")
@@ -97,6 +110,7 @@ def run_endpoint_test(name: str, url: str, sequential_requests: int, concurrent_
     return {
         "endpoint": name,
         "url": url,
+        "firstRequestColdMs": cold_ms,
         "sequential": sequential_summary,
         "sequentialFailures": len(sequential_failures),
         "concurrent": concurrent_summary,
@@ -111,7 +125,18 @@ def main():
     parser.add_argument("--analytics-url", default="http://localhost:8000", help="Analytics service base URL.")
     parser.add_argument("--sequential", type=int, default=10, help="Sequential requests per endpoint.")
     parser.add_argument("--concurrent", type=int, default=5, help="Concurrent requests per endpoint (0 to skip).")
+    parser.add_argument("--token", default=os.getenv("ANALYTICS_LOAD_TEST_TOKEN"),
+                        help="JWT (log in via the Node API and copy the token). Or set ANALYTICS_LOAD_TEST_TOKEN.")
+    parser.add_argument("--internal-key", default=os.getenv("ANALYTICS_INTERNAL_API_KEY"),
+                        help="Value of ANALYTICS_INTERNAL_API_KEY, as an alternative to --token.")
     args = parser.parse_args()
+
+    if args.token:
+        HEADERS["Authorization"] = f"Bearer {args.token}"
+    elif args.internal_key:
+        HEADERS["X-Internal-Api-Key"] = args.internal_key
+    else:
+        print("WARNING: no --token / --internal-key given; analytics endpoints will answer 401 and be reported as failures.")
 
     crop = urllib.parse.quote(args.crop)
 

@@ -5,8 +5,24 @@ from app.services.data_loader import (
     load_bids,
     load_transactions,
 )
+from app.utils.ttl_cache import ttl_cache
 
 
+def most_sold_crop_name(transactions_df, crops_df):
+    """Crop name with the most transactions, or None when it can't be determined."""
+    if transactions_df.empty or crops_df.empty:
+        return None
+    if "cropId" not in transactions_df.columns or "cropName" not in crops_df.columns:
+        return None
+    names = crops_df[["_id", "cropName"]].rename(columns={"_id": "cropId"})
+    merged = transactions_df[["cropId"]].merge(names, on="cropId", how="left").dropna(subset=["cropName"])
+    if merged.empty:
+        return None
+    counts = merged["cropName"].astype(str).str.strip().value_counts()
+    return str(counts.idxmax())
+
+
+@ttl_cache(seconds=120)
 def get_market_insights() -> dict:
     """
     Generate useful marketplace insights from crops, bids,
@@ -80,62 +96,11 @@ def get_market_insights() -> dict:
     # -----------------------------------
     # MOST POPULAR CROP
     # -----------------------------------
+    # Count sales per crop NAME. (Counting per cropId, as this used to,
+    # is meaningless: each listing is sold at most once, so every id has
+    # a count of 1 and idxmax() just returned whichever came first.)
 
-    most_popular_crop = "No data available"
-
-    if not transactions_df.empty:
-
-        crop_column = None
-
-        possible_crop_columns = [
-            "cropName",
-            "crop",
-            "cropId"
-        ]
-
-        for column in possible_crop_columns:
-            if column in transactions_df.columns:
-                crop_column = column
-                break
-
-        if crop_column is not None:
-
-            top_crop_value = (
-                transactions_df[crop_column]
-                .value_counts()
-                .idxmax()
-            )
-
-            # If crop name already exists
-            if crop_column == "cropName":
-
-                most_popular_crop = str(top_crop_value)
-
-            # Convert cropId to cropName
-            elif (
-                not crops_df.empty
-                and "_id" in crops_df.columns
-                and "cropName" in crops_df.columns
-            ):
-
-                matching_crop = crops_df[
-                    crops_df["_id"].astype(str)
-                    == str(top_crop_value)
-                ]
-
-                if not matching_crop.empty:
-
-                    most_popular_crop = str(
-                        matching_crop.iloc[0]["cropName"]
-                    )
-
-                else:
-
-                    most_popular_crop = str(top_crop_value)
-
-            else:
-
-                most_popular_crop = str(top_crop_value)
+    most_popular_crop = most_sold_crop_name(transactions_df, crops_df) or "No data available"
 
     # -----------------------------------
     # MARKET ACTIVITY LEVEL

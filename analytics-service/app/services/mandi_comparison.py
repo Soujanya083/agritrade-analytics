@@ -16,18 +16,21 @@ your app's crop names or seeded locations - this module does a
 best-effort case-insensitive match and reports clearly when no match
 is found, rather than fabricating a comparison.
 """
-import os
 import requests
 from dotenv import load_dotenv
+from app import config
 from app.services.mandi_snapshot import get_snapshot
+from app.utils.ttl_cache import ttl_cache
 
 load_dotenv()
 
-DATAGOVIN_API_KEY = os.getenv("DATAGOVIN_API_KEY")
-DATAGOVIN_RESOURCE_ID = os.getenv("DATAGOVIN_RESOURCE_ID")
 BASE_URL = "https://api.data.gov.in/resource"
 
 
+# Government API results change at most daily; 15 minutes keeps the
+# dashboard fast and stays well inside the API's rate limits. Not tied to
+# the marketplace data version (it is external data).
+@ttl_cache(seconds=900, data_aware=False)
 def fetch_mandi_prices(commodity: str, state: str = None, limit: int = 20) -> dict:
     """Fetches recent real mandi prices for a commodity from data.gov.in.
     Falls back to a cached snapshot of real government data if the live
@@ -35,7 +38,10 @@ def fetch_mandi_prices(commodity: str, state: str = None, limit: int = 20) -> di
     a standard resilience pattern for third-party API dependencies, and
     it means a demo never breaks just because a network policy or the
     government server is uncooperative at the wrong moment."""
-    if not DATAGOVIN_API_KEY or not DATAGOVIN_RESOURCE_ID:
+    # Read at call time (not import time) so behaviour never depends on
+    # import order - that is what made the original tests environment-dependent.
+    api_key, resource_id = config.mandi_credentials()
+    if not api_key or not resource_id:
         return {
             "error": (
                 "Mandi API credentials not configured. Set DATAGOVIN_API_KEY "
@@ -44,9 +50,9 @@ def fetch_mandi_prices(commodity: str, state: str = None, limit: int = 20) -> di
             )
         }
 
-    url = f"{BASE_URL}/{DATAGOVIN_RESOURCE_ID}"
+    url = f"{BASE_URL}/{resource_id}"
     params = {
-        "api-key": DATAGOVIN_API_KEY,
+        "api-key": api_key,
         "format": "json",
         "limit": limit,
         "filters[commodity]": commodity,

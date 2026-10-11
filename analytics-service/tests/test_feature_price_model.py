@@ -86,3 +86,17 @@ def test_explain_with_shap_falls_back_when_no_history():
             result = feature_price_model.explain_with_shap("Wheat")
     assert result["cropName"] == "Wheat"
     assert "note" in result
+
+def test_evaluation_reports_naive_baselines_and_whether_the_model_beats_them():
+    """A low RMSE means nothing if 'predict the asking price' does as well."""
+    df = _make_fake_crops_df(n_listings_per_crop=40, crop_names=("Wheat", "Rice"))
+    with patch.object(feature_price_model, "load_crops", return_value=df):
+        result = feature_price_model.train_and_evaluate_feature_model()
+
+    assert "error" not in result
+    assert set(result["baselines"]) == {"predict_asking_price", "predict_previous_listing_price"}
+    for baseline in result["baselines"].values():
+        assert "RMSE" in baseline
+    assert isinstance(result["beatsBestBaseline"], bool)
+    best = min(b["RMSE"] for b in result["baselines"].values())
+    assert result["beatsBestBaseline"] == (result["metrics"]["RMSE"] < best)

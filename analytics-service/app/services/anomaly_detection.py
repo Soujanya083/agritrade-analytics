@@ -3,6 +3,7 @@ import numpy as np
 from sklearn.ensemble import IsolationForest
 
 from app.services.data_loader import load_bids, load_crops
+from app.utils.ttl_cache import ttl_cache
 
 
 def _find_bid_column(df: pd.DataFrame):
@@ -10,6 +11,27 @@ def _find_bid_column(df: pd.DataFrame):
         if column in df.columns:
             return column
     return None
+
+
+def _relative_bid_feature(df: pd.DataFrame, bid_column: str):
+    """
+    bid amount / the listing's base price, or None if it can't be built.
+
+    Pooling raw rupee amounts across crops is wrong: a Rs.120/kg crop's
+    perfectly ordinary bids look "anomalous" next to Rs.20/kg crops. The
+    ratio to the crop's own base price puts every crop on one scale, so the
+    detectors flag bids that are unusual FOR THEIR LISTING.
+    """
+    if "cropId" not in df.columns:
+        return None
+    crops = load_crops()
+    if crops.empty or "basePrice" not in crops.columns:
+        return None
+    base = pd.to_numeric(crops.set_index("_id")["basePrice"], errors="coerce")
+    base = base.where(base > 0)
+    ratio = pd.to_numeric(df[bid_column], errors="coerce") / df["cropId"].astype(str).map(base)
+    # Only trust the normalisation if (almost) every bid could be matched.
+    return ratio if ratio.notna().mean() >= 0.8 else None
 
 
 def _zscore_anomalies(values: pd.Series, threshold: float = 3.0) -> pd.Series:
@@ -157,6 +179,7 @@ def _detect_unrealistic_bid_jumps(bids_df: pd.DataFrame, jump_threshold: float =
     return flagged
 
 
+@ttl_cache(seconds=300)
 def detect_bid_anomalies(contamination: float = 0.05) -> dict:
     """
     Detects unusual bidding patterns using three independent methods -
@@ -184,7 +207,9 @@ def detect_bid_anomalies(contamination: float = 0.05) -> dict:
         }
 
     df[bid_column] = pd.to_numeric(df[bid_column], errors="coerce")
-    clean_df = df.dropna(subset=[bid_column]).copy()
+    relative = _relative_bid_feature(df, bid_column)
+    df["_feature"] = relative if relative is not None else df[bid_column]
+    clean_df = df.dropna(subset=[bid_column, "_feature"]).copy()
 
     if len(clean_df) < 10:
         return {
@@ -192,12 +217,12 @@ def detect_bid_anomalies(contamination: float = 0.05) -> dict:
             "recordsAvailable": len(clean_df),
         }
 
-    values = clean_df[bid_column]
+    values = clean_df["_feature"]  # bid/base price when available, else raw amount
 
     clean_df["zscoreFlag"] = _zscore_anomalies(values)
     clean_df["iqrFlag"] = _iqr_anomalies(values)
 
-    X = clean_df[[bid_column]]
+    X = clean_df[["_feature"]]
     model = IsolationForest(contamination=contamination, random_state=42)
     clean_df["isolationForestLabel"] = model.fit_predict(X)
     clean_df["anomalyScore"] = model.decision_function(X)
@@ -225,6 +250,8 @@ def detect_bid_anomalies(contamination: float = 0.05) -> dict:
             "confidence": row["confidence"],
             "isolationForestScore": round(float(row["anomalyScore"]), 4),
         }
+        if relative is not None:
+            record["bidToBasePriceRatio"] = round(float(row["_feature"]), 3)
         if "_id" in row.index:
             record["bidId"] = str(row["_id"])
         if "createdAt" in row.index and pd.notna(row["createdAt"]):
@@ -244,11 +271,18 @@ def detect_bid_anomalies(contamination: float = 0.05) -> dict:
     return {
         "methodology": (
             "Three independent detectors - Z-score, IQR, and Isolation "
-            "Forest - are each run on bid amounts. Records are reported "
+            "Forest - are each run on bid amounts"
+            + (" expressed as a ratio to each listing's base price, so crops "
+               "with different price levels are comparable" if relative is not None
+               else " (raw amounts: base prices could not be matched, so crops "
+                    "with higher prices may be over-flagged)")
+            + ". Records are reported "
             "as 'anomalous behaviour', not 'fraud', since there is no "
             "labelled fraud data available to validate a fraud claim."
         ),
-        "featureAnalyzed": bid_column,
+        "featureAnalyzed": (
+            f"{bid_column} / crop base price" if relative is not None else bid_column
+        ),
         "recordsAnalyzed": total_records,
         "methodAgreement": {
             "flaggedByAllThree": int((clean_df["flagCount"] == 3).sum()),

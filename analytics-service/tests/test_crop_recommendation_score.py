@@ -59,3 +59,23 @@ def test_weights_sum_to_one():
     # convex combination.
     total = crs.PRICE_WEIGHT + crs.LISTING_WEIGHT + crs.STABILITY_WEIGHT
     assert abs(total - 1.0) < 1e-9
+
+def test_score_rewards_demand_strength_not_a_high_rupee_price_level():
+    """Apple (Rs.100/kg, no premium) must not out-rank Onion (Rs.20/kg, strong bidding)
+    just for being expensive - the original price term did exactly that."""
+    import pandas as pd
+    from unittest.mock import patch
+    from app.services import crop_recommendation_score as scorer
+
+    rows = []
+    for i in range(12):
+        rows.append({"cropName": "Apple", "currentBid": 100.0, "basePrice": 100.0})
+        rows.append({"cropName": "Onion", "currentBid": 26.0, "basePrice": 20.0})
+    with patch.object(scorer, "load_crops", return_value=pd.DataFrame(rows)):
+        result = scorer.get_crop_recommendation_scores()
+    by_crop = {r["cropName"]: r for r in result["recommendedCrops"]}
+    assert by_crop["Onion"]["bidPremiumPct"] == 30.0
+    assert by_crop["Apple"]["bidPremiumPct"] == 0.0
+    assert by_crop["Onion"]["priceScore"] > by_crop["Apple"]["priceScore"]
+    assert by_crop["Onion"]["marketScore"] > by_crop["Apple"]["marketScore"]
+    assert "bid above the asking price" in result["methodology"]

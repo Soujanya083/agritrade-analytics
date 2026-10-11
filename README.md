@@ -1,398 +1,128 @@
 # 🌾 AgriTrade AI
 
-## Intelligent Agricultural Marketplace & Data-Driven Decision Support System
+An agricultural marketplace (farmers list crops, buyers bid, deals are paid and delivered) with a data-science layer that turns the marketplace's own data into price/demand forecasts, "where to sell" advice and a chatbot. Final-year project combining **full-stack development, data analytics, machine learning and generative AI**.
 
-AgriTrade AI is a **final-year Computer Science Engineering project** that combines **Full Stack Development, Data Analytics, Data Science, Machine Learning, and backend technologies** to build a smarter agricultural marketplace.
-
-The platform connects farmers and buyers while transforming marketplace data into meaningful insights, forecasts, recommendations, and decision-support information.
+> **Read [docs/LIMITATIONS_AND_VIVA.md](docs/LIMITATIONS_AND_VIVA.md)** for what is real, what is simulated, and what an examiner is likely to ask. This README describes what the code does today, not an aspiration.
 
 ---
 
-# 🎯 Problem Statement
-
-Farmers often face challenges such as:
-
-* Limited access to suitable buyers
-* Uncertainty about fair crop prices
-* Difficulty understanding market demand
-* Lack of data-driven selling decisions
-* Price fluctuations and market volatility
-* Limited visibility into historical market trends
-
-Existing agricultural platforms may provide marketplaces or price information, but AgriTrade AI aims to combine a **digital agricultural marketplace with intelligent analytics and forecasting**.
-
-The system is designed to help answer important questions such as:
-
-> 🌾 What crops are in demand?
-> 📈 How are crop prices changing?
-> 🔮 What may happen to prices in the future?
-> 💰 Which selling opportunities are more profitable?
-> 📊 What does marketplace data reveal about buyers and transactions?
-
----
-
-# 💡 Our Solution
-
-AgriTrade AI provides an integrated platform consisting of:
-
-### 🌐 Digital Agricultural Marketplace
-
-Farmers can list crops and connect with potential buyers.
-
-### 💰 Bidding System
-
-Buyers can place bids on agricultural products. Bid placement uses an atomic conditional database update (rather than a read-then-write), so two bids arriving at nearly the same time can't leave the listed price lower than the true highest bid - verified with a dedicated concurrency test (`bid-race-condition.test.js`).
-
-### 💳 Secure Payment Workflow
-
-The platform supports payment integration and transaction processing.
-
-### 📊 Data Analytics
-
-Marketplace data is analyzed to identify trends, demand patterns, revenue insights, and buyer behavior.
-
-### 🤖 Machine Learning & Forecasting
-
-Historical data is used for crop price prediction and demand forecasting.
-
-### 🧠 Explainable Decision Support
-
-The system provides understandable insights instead of only producing black-box predictions.
-
----
-
-# 🚀 Key Features
-
-## 👨‍🌾 Farmer Features
-
-* User registration and authentication
-* Crop listing
-* Crop quantity and pricing information
-* Bid monitoring
-* Revenue insights
-* Transaction tracking
-
-## 🛒 Buyer Features
-
-* Browse available crops
-* Place bids
-* View marketplace listings
-* Transaction management
-* Purchase tracking
-
-## 💰 Marketplace Features
-
-* Crop listings
-* Bidding system
-* Bid management
-* Payment workflow
-* Delivery confirmation
-* Notifications
-
----
-
-# 📊 Data Analytics & Data Science Features
-
-AgriTrade AI includes an analytics intelligence layer built on actual marketplace data.
-
-### Analytics Features
-
-* 📈 Crop price trend analysis
-* 🌾 Best-selling crop analysis
-* 🗺️ Region-wise demand analysis
-* 💰 Farmer revenue analysis
-* 👥 Buyer purchasing pattern analysis
-* 📊 Exploratory Data Analysis (EDA)
-* 🧹 Data quality assessment
-* 📉 Outlier detection
-
----
-
-# 🤖 Machine Learning Features
-
-## 🔮 Crop Price Forecasting
-
-The system forecasts future crop prices using:
-
-* Prophet
-* ARIMA
-* Linear Regression Baseline
-* Naive baseline (used as the bar every other model must beat)
-* **Ensemble** — equal-weighted average of whichever of the above models produce a usable forecast for a given fold
-
----
-
-## 🧪 Model Validation & Backtesting
-
-Predictions are validated using **walk-forward (rolling-origin) validation**: the training window slides forward through history across multiple folds instead of a single train/test split, so results reflect how the model performs on data it hasn't seen — not one lucky split.
-
-The system compares Naive, Linear Regression, Prophet, ARIMA, and Ensemble using:
-
-* **MAE — Mean Absolute Error**
-* **RMSE — Root Mean Squared Error**
-* **MAPE / sMAPE — (Symmetric) Mean Absolute Percentage Error**
-
-Instead of blindly trusting predictions, the models are evaluated against actual historical observations.
-
-ARIMA's graceful failure on too-short series, and the Ensemble's rule that it only combines a fold's output when at least 2 models produced a usable forecast, both have dedicated unit tests (`test_arima_and_ensemble.py`).
-
----
-
-## 📈 Demand Forecasting
-
-Historical marketplace activity is analyzed to estimate future demand, validated the same way price forecasting is - walk-forward backtesting comparing Naive vs. Linear Regression, with MAE/RMSE reported per model (`backtest_demand_model`, covered by `test_backtest_demand_model.py`).
-
----
-
-## 🌾 Market Recommendation Engine (Expected Net Profit)
-
-Given a crop, the farmer's state, and quantity, the system pulls real, live AGMARKNET market records across multiple markets and ranks them by **Expected Net Profit** — modal price minus a disclosed transport-cost tier (same-state vs. cross-state) minus a disclosed flat storage cost — rather than raw price alone. Assumptions are returned alongside the ranking, not hidden. See `market_recommendation.py`.
-
-The system also separately recommends crops based on marketplace demand and supply signals (`recommendation.py`).
-
----
-
-## 🧠 Explainable Analytics
-
-Predictions are explained using real **SHAP values** from a feature-engineered RandomForest model (previous price, rolling average, season, asking price, crop, location) whenever enough listing history exists. When it doesn't yet, or SHAP isn't available, the system automatically falls back to a rule-based explanation using:
-
-* Historical average price
-* Price trend
-* Recent price momentum
-* Price volatility
-* Recent price level
-
-This helps make the analytics system more transparent and understandable, using a real model's attributions where one actually exists rather than a heuristic dressed up as one.
-
----
-
-## 👥 Buyer Segmentation
-
-Buyer behavior is analyzed using:
-
-* RFM Analysis
-* K-Means Clustering
-
-This helps identify different buyer groups based on purchasing behavior.
-
----
-
-# 🏛️ Market Price Validation
-
-AgriTrade AI includes market price comparison functionality to support validation of marketplace predictions against available mandi/agricultural market data.
-
-This helps strengthen the reliability of the decision-support system.
-
----
-
-# 🏗️ System Architecture
-
-```text
-                         ┌─────────────────────┐
-                         │     React Frontend   │
-                         │   User Interface     │
-                         └──────────┬──────────┘
-                                    │
-                                    ▼
-                         ┌─────────────────────┐
-                         │    Backend API      │
-                         │ Authentication      │
-                         │ Marketplace Logic   │
-                         │ Bidding & Payments  │
-                         └──────────┬──────────┘
-                                    │
-                     ┌──────────────┼──────────────┐
-                     ▼                             ▼
-          ┌────────────────────┐       ┌─────────────────────┐
-          │    MongoDB         │       │ Analytics Service   │
-          │ Marketplace Data   │       │ FastAPI + Python    │
-          └────────────────────┘       └──────────┬──────────┘
-                                                   │
-                                                   ▼
-                                      ┌─────────────────────┐
-                                      │ Data Analytics & ML │
-                                      │ Forecasting         │
-                                      │ Recommendations     │
-                                      │ Model Validation    │
-                                      └─────────────────────┘
+## Architecture
+
+```
+ React app (agribid/)  ──REST + JWT──►  Node/Express API (server/)  ──►  MongoDB
+        │                                        ▲  (users, crops, bids, transactions)
+        │                                        │ same database, read-only use
+        └──REST + same JWT──►  FastAPI analytics service (analytics-service/)
+                                    │  pandas · Prophet · statsmodels · scikit-learn · SHAP
+                                    ├──► data.gov.in AGMARKNET (live mandi prices, optional)
+                                    └──► LLM provider (optional, general farming Q&A only)
 ```
 
----
+| Part | Tech | Responsibility |
+|---|---|---|
+| `agribid/` | React 19 (CRA), Recharts | UI: marketplace, dashboards, analytics, companion-planting guide |
+| `server/` | Express 5, Mongoose 9, JWT, bcrypt, Razorpay | Accounts, listings, bidding, deals, payments, notifications |
+| `analytics-service/` | FastAPI, pandas, Prophet, ARIMA, scikit-learn, SHAP | Forecasts, backtests, segmentation, anomalies, decision summary, chatbot |
 
-# 🛠️ Technology Stack
+**Identity:** the Node server issues an HS256 JWT at login. The analytics service verifies the *same* token with the *same* `JWT_SECRET` — there is no second login system. The React app attaches the token to both APIs.
 
-## 🌐 Frontend
+## Quick start (local)
 
-* React
-* JavaScript
-* HTML
-* CSS
-
-## ⚙️ Backend
-
-* Node.js
-* Express.js
-
-## 🗄️ Database
-
-* MongoDB
-* MongoDB Atlas
-
-## 📊 Data Analytics & Data Science
-
-* Python
-* Pandas
-* NumPy
-* Jupyter Notebook
-
-## 🤖 Machine Learning
-
-* Prophet
-* statsmodels (ARIMA)
-* Scikit-learn (Linear Regression, Isolation Forest, K-Means Clustering)
-
-## 🚀 Analytics API
-
-* FastAPI
-* Uvicorn
-* `GET /api/analytics/market-recommendation` — Net Profit market ranking (new)
-
-## 💳 Payment Integration
-
-* **UPI (manual confirmation)** - the demonstrated, working payment path used for testing and screenshots.
-* **Razorpay** - order creation, checkout, and signature verification are all implemented and wired end-to-end (`/create-order` endpoint, frontend checkout in `DashboardPage.js`, `/verify-payment` signature check). Not live-tested: generating even test-mode Razorpay credentials now requires PAN-linked KYC, which was intentionally not completed for this project. The integration is code-complete and reviewable; live verification is documented here as a limitation, not silently skipped.
-
-## ☁️ Deployment
-
-* Vercel
-* Render
-* MongoDB Atlas
-
----
-
-# 📁 Project Structure
-
-```text
-Farmers/
-│
-├── agribid/                 # Frontend Application
-│
-├── server/                  # Backend Application
-│
-├── analytics-service/       # Data Analytics & ML Service
-│
-├── README.md
-├── .gitignore
-│
-└── documentation/
+```bash
+# 1. MongoDB running locally (or set MONGO_URI to Atlas)
+# 2. Backend
+cd server && cp .env.example .env && npm install && npm start            # :5000
+# 3. Analytics (Python 3.11)
+cd analytics-service && cp .env.example .env
+pip install -r requirements.txt && uvicorn app.main:app --reload --port 8000   # docs at /docs
+# 4. Frontend
+cd agribid && npm install && npm start                                    # :3000
+# Optional: demo data (SYNTHETIC - see limitations) then crop photos
+python analytics-service/seed_data.py          # needs MONGO_URI
+cd server && PEXELS_API_KEY=... npm run backfill-images
 ```
 
----
+Without any `.env`, local development works out of the box (both services share a public dev-only JWT secret). **Deployed instances refuse to start/serve without `JWT_SECRET`.**
 
-# 📊 Analytics Service
+### Environment variables
 
-The analytics and machine-learning implementation is maintained separately inside:
+| Variable | Where | Purpose |
+|---|---|---|
+| `JWT_SECRET` | server + analytics | **Required when deployed**, must be identical in both |
+| `MONGO_URI` | server + analytics | Database |
+| `CORS_ORIGINS` | server + analytics | Comma-separated frontend origins (empty = allow all, dev only) |
+| `TRUST_PROXY` | server | Proxy hops (default 1 when deployed) so rate limits are per user |
+| `EXPOSE_OTP_IN_RESPONSE` | server | `true` (default) = demo mode, OTP returned by the API; set `false` once a real SMS/email sender exists |
+| `PEXELS_API_KEY` | server | Real crop photos (free key). Without it, listings show a labelled icon |
+| `RAZORPAY_KEY_ID/SECRET` | server | Online payments (otherwise manual UPI) |
+| `DATAGOVIN_API_KEY/RESOURCE_ID` | analytics | Live mandi prices (otherwise a small saved snapshot is used and labelled) |
+| `ANALYTICS_INTERNAL_API_KEY` | analytics | Optional key for trusted server-to-server callers (`X-Internal-Api-Key`) |
+| `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL` | analytics | Optional general-farming chatbot answers (see below) |
+| `REACT_APP_API_BASE_URL`, `REACT_APP_ANALYTICS_BASE_URL` | frontend | API locations |
+| `REACT_APP_UPI_ID`, `REACT_APP_UPI_NAME` | frontend | Receiving UPI account (no default; unset = "demo mode" notice) |
 
-```text
-analytics-service/
-```
+## Security model
 
-It includes:
+- **Auth:** JWT (HS256, 7 days, algorithm pinned on verify) on every protected Node route and **every analytics route**; analytics returns 401/403, or 503 if the server is misconfigured (never "open").
+- **Authorization:** farmer/buyer identity comes from the token, never the request body; only the listing's farmer can accept a bid; only the transaction's buyer can pay/confirm delivery.
+- **Privacy:** marketplace-wide analytics (farmer revenue, buyer spend, anomaly flags) return **pseudonymous labels** (`User-a1b2c3`) with an `isYou` flag instead of user IDs. Analytics loaders exclude password hashes, OTPs and photos at the database.
+- **Uploads:** listing photos must be an `https` URL or a PNG/JPEG/WebP data URI ≤ 400 KB whose bytes match the claimed type; the browser shrinks photos first. Body limit 1 MB.
+- **Abuse limits:** global + login/signup/OTP rate limits (correct behind a proxy), delivery-OTP attempt cap, per-user cap on LLM-backed chatbot questions.
+- **Concurrency:** accepting a bid atomically claims the crop (no double transactions); placing a bid is an atomic conditional update.
+- **Errors:** 500 responses never include internals; they are logged server-side.
+- **Known gaps:** see the limitations document (OTP demo mode, manual-UPI trust, token in `localStorage`).
 
-* Price forecasting (Naive, Linear Regression, Prophet, ARIMA, Ensemble)
-* Demand forecasting
-* Walk-forward model backtesting across all five forecasting models
-* EDA
-* Data quality auditing
-* Buyer segmentation (RFM + K-Means)
-* Market Recommendation Engine (Expected Net Profit ranking across real markets)
-* Crop demand/supply recommendation engine
-* Explainable analytics (SHAP)
-* Market price comparison and validation against real AGMARKNET data
+## Analytics API (all under `/api/analytics`, all require a token)
 
-See the Analytics Service documentation for detailed information.
+Interactive docs at `/docs`. Errors use real status codes with body `{"detail", "error", "status"}`:
 
----
+| Code | Meaning |
+|---|---|
+| 401 / 403 | Missing/expired token / role not allowed |
+| 404 | Crop or commodity has no data |
+| 422 | Invalid parameter, or not enough data to compute |
+| 429 | Chatbot LLM budget exceeded (`Retry-After` set) |
+| 503 | Database / auth config / upstream (mandi credentials) unavailable |
+| 500 | Unexpected failure (generic message) |
 
-# 🧪 Testing
+Main endpoints: `crops`, `price-trend`, `price-prediction`, `demand-forecast`, `backtest/{price,demand}`, `decision-summary`, `decision/sell-or-wait`, `decision/backtest`, `market-recommendation`, `mandi-prices`, `mandi-compare`, `buyer-segments`, `bid-anomalies`, `crop-recommendation-score`, `recommend-crops`, `best-selling-crops`, `region-demand`, `farmer-revenue`, `buyer-patterns`, `real-market/{commodities,overview,forecast}`, `data-provenance`, `data-quality`, `eda-report`, `prediction-explanation`, `price-model/evaluation`, `chatbot` (POST), `chatbot/status`. Public: `/api/health`, `/api/ready` (DB ping).
 
-The project includes automated testing across different components.
+## Data science
 
-Testing covers:
+**Real market data (the strongest part):** import AGMARKNET mandi history (`docs/REAL_DATA.md`) and the *Real market data* section runs a **forecast lab** - naive/seasonal/drift/moving-average/Ridge/gradient-boosting (+ ARIMA/Prophet when installed) compared by **rolling-origin backtest**, scored with MAE/RMSE/sMAPE/**MASE**, tested against naive with a **Diebold-Mariano test (Holm-corrected)**, with **conformal prediction intervals** whose coverage is checked on held-out origins. A model is only crowned if it significantly beats "price stays the same"; otherwise the page says so. It also reports seasonality (flagged unreliable under 2 years), volatility, year-on-year change and price spread across markets. The marketplace's own listings remain, but the page now states what percentage of them is synthetic and caps forecast confidence accordingly (`/api/analytics/data-provenance`).
 
-* API functionality
-* Input validation
-* Analytics services
-* Machine learning endpoints
+Full methods, validation results and limits: [docs/DS_METHODOLOGY.md](docs/DS_METHODOLOGY.md). A reproducible per-commodity report (Markdown + figures): `python scripts/generate_market_report.py --commodity Onion`.
 
----
+**Marketplace-listing models:**
 
-# 🎓 Academic Focus
+- **Price forecast:** Prophet (linear-trend fallback when < 10 days of history) on the daily mean of listing `currentBid`. **Demand forecast** is *completed sales per day*.
+- **Backtesting:** rolling-origin evaluation against a naive baseline, linear regression, ARIMA, Prophet and an ensemble; the UI states whether the best model actually beat the naive baseline.
+- **Feature model:** RandomForest on lagged/rolling features with a chronological split, SHAP explanations, and **explicit baselines** ("predict the asking price", "predict the previous listing") that it must beat.
+- **Segmentation:** RFM + K-Means. **Anomalies:** Z-score, IQR and Isolation Forest on *bid ÷ listing base price* (so expensive crops aren't flagged merely for being expensive).
+- **Decision summary** (top of the Analytics page): predicted price, demand level, best mandi, expected revenue/cost/net profit, platform payout after the real 5 % fee, sell-or-wait timing, a confidence level **with its reasons**, and limitations. Missing parts are omitted and reported as warnings — never invented.
+- **Performance:** in-process TTL cache (thread-safe, bounded, single-flight, invalidated when crop/bid/transaction counts change); one 90-day forecast per crop is fit once and sliced for shorter horizons; DataFrames are cached per data version. Redis was deliberately *not* added: one process on one instance doesn't need it. Limitation: with several workers each has its own cache.
 
-AgriTrade AI is designed as a multidisciplinary final-year project combining:
+## Chatbot (hybrid, honest about its source)
 
-| Domain                 | Contribution                             |
-| ---------------------- | ---------------------------------------- |
-| Full Stack Development | Marketplace platform and user experience |
-| Backend Development    | APIs, business logic and integrations    |
-| Data Analytics         | Trends, EDA and business insights        |
-| Data Science           | Data processing and statistical analysis |
-| Machine Learning       | Forecasting and recommendations          |
-| Software Engineering   | Testing, validation and deployment       |
+1. Entities (crop, location, state) are matched against the **crops actually in the database** (whole-word, typo-tolerant, Hindi aliases such as *tamatar*).
+2. Questions about marketplace data (price, demand, sell-or-wait, where to sell, best crops) are answered by the **same analytics functions as the dashboard** — no LLM, so no hallucinated numbers. Replies are tagged `project_data`.
+3. If a data question names no known crop, the bot asks which one (and lists the crops it has data for).
+4. General farming questions go to an **optional LLM** (`llm_general`, with a disclaimer) under a system prompt that forbids stating prices/forecasts. Without an API key the bot says plainly that general Q&A is unavailable (`fallback`). Providers: Anthropic, or any OpenAI-compatible API (OpenAI, Groq, Gemini's OpenAI endpoint, local Ollama).
 
----
+## Companion planting
 
-# 🔬 Project Strength
+`agribid/src/data/companionPlanting.js` holds 31 crops (add one object to add a crop). The tab is picture-first: emoji tiles, a "can I plant these together?" checker, benefit icons, a drawn field-layout diagram, and tap-to-explain. Each crop is labelled *backed by field trials* or *traditional practice*, search matches local names and companions, and the UI says plainly when nothing is documented. It is general guidance, not agronomic advice.
 
-A major objective of AgriTrade AI is to ensure that analytics outputs are **validated and explainable**.
+## Tests
 
-The project does not treat machine-learning predictions as automatically correct.
+| Suite | Command | Needs |
+|---|---|---|
+| Analytics (pytest) | `cd analytics-service && pip install -r requirements-dev.txt && pytest` | nothing external (hermetic) |
+| Backend (Jest) | `cd server && npm test` | downloads an in-memory MongoDB |
+| Frontend (Jest/RTL) | `cd agribid && npm test` | – |
 
-Instead, it focuses on:
+CI (`.github/workflows/ci.yml`) runs all three plus a production build on every push/PR. Exact counts and what was verified are in the final audit report.
 
-* Data quality checks
-* Historical data analysis
-* Model comparison
-* Backtesting
-* Error metrics
-* Explainable insights
-* External market price comparison where data is available
+## Honest summary of what is real
 
----
-
-# 🔮 Future Enhancements
-
-* Real-time bidding using WebSockets
-* Advanced anomaly detection
-* Market volatility alerts
-* Automated model selection
-* Rolling-window backtesting
-* Power BI business intelligence dashboard
-* Larger crop catalog
-* Crop quality grading using Computer Vision
-* Additional agricultural data sources
-* Advanced farmer decision-support recommendations
-
----
-
-# 👩‍💻 Team Project
-
-**AgriTrade AI**
-
-Final Year Project
-**Computer Science Engineering**
-
-### Domains Covered
-
-🌐 Full Stack Development
-📊 Data Analytics
-🤖 Data Science & Machine Learning
-⚙️ Backend Development
-🗄️ Database Systems
-☁️ Cloud Deployment
-
----
-
-## ⭐ Vision
-
-> **To build a transparent, data-driven agricultural marketplace that combines digital trading with intelligent analytics and decision support.**
+Real: auth, bidding, deals, the forecasting/backtesting/segmentation/anomaly code, SHAP, the hybrid chatbot, the mandi comparison (live with an API key). **Not real / needs setup:** OTP delivery (demo), payments verified only via Razorpay when configured (UPI is trust-based), the seeded marketplace data (synthetic), LLM answers (need a key), and the saved mandi snapshot (onion only). Details: [docs/LIMITATIONS_AND_VIVA.md](docs/LIMITATIONS_AND_VIVA.md).

@@ -1,7 +1,9 @@
 import numpy as np
 from app.services.price_prediction import _prepare_series
+from app.utils.ttl_cache import ttl_cache
 
 
+@ttl_cache(seconds=300)
 def explain_price_prediction(crop_name: str):
     series = _prepare_series(crop_name)
 

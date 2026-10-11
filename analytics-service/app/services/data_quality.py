@@ -5,6 +5,7 @@ from app.services.data_loader import (
     load_transactions,
     load_users,
 )
+from app.utils.ttl_cache import ttl_cache
 
 # Columns that should never be negative, per dataset. A negative price,
 # quantity, or payout is a data-entry/pipeline bug, not a valid record.
@@ -98,6 +99,7 @@ def _profile_dataframe(df: pd.DataFrame, name: str) -> dict:
     }
 
 
+@ttl_cache(seconds=300)
 def generate_data_quality_report() -> dict:
     """Audit all core marketplace datasets."""
 

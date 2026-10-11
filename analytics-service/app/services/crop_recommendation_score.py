@@ -1,6 +1,7 @@
 import pandas as pd
 
 from app.services.data_loader import load_crops
+from app.utils.ttl_cache import ttl_cache
 
 # These weights are a documented judgment call, not derived from data -
 # there's no ground-truth "good outcome" label yet to fit them against.
@@ -21,6 +22,7 @@ STABILITY_WEIGHT = 0.30
 MIN_LISTINGS_FOR_RELIABLE_SCORE = 3
 
 
+@ttl_cache(seconds=300)
 def get_crop_recommendation_scores() -> dict:
     """
     Calculate a market recommendation score for each crop.
@@ -110,15 +112,34 @@ def get_crop_recommendation_scores() -> dict:
     # Calculate crop statistics
     # -----------------------------------
 
+    # DEMAND-STRENGTH TERM. A rupee price LEVEL is not a profitability signal:
+    # Apple (Rs.100/kg) would always out-rank Onion (Rs.20/kg) just for being
+    # dearer. What is comparable across crops is how far buyers bid ABOVE the
+    # farmer's asking price. When asking prices exist we score that premium and
+    # keep the absolute average only for display.
+    premium_available = (
+        price_column == "currentBid" and "basePrice" in df.columns
+    )
+    if premium_available:
+        base = pd.to_numeric(df["basePrice"], errors="coerce")
+        df["_bidPremiumPct"] = (df[price_column] / base.where(base > 0) - 1) * 100
+        premium_available = bool(df["_bidPremiumPct"].notna().any())
+
+    aggregations = dict(
+        listings=("cropName", "size"),
+        averagePrice=(price_column, "mean"),
+        priceStdDev=(price_column, "std"),
+    )
+    if premium_available:
+        aggregations["bidPremiumPct"] = ("_bidPremiumPct", "mean")
+
     performance = (
         df.groupby("cropName")
-        .agg(
-            listings=("cropName", "size"),
-            averagePrice=(price_column, "mean"),
-            priceStdDev=(price_column, "std")
-        )
+        .agg(**aggregations)
         .reset_index()
     )
+    if premium_available:
+        performance["bidPremiumPct"] = performance["bidPremiumPct"].fillna(0)
 
     # One listing means standard deviation is NaN
     performance["priceStdDev"] = (
@@ -163,9 +184,11 @@ def get_crop_recommendation_scores() -> dict:
             * 100
         )
 
-    # Higher average price = better
+    # Higher buyer premium over the asking price = stronger demand = better.
+    # (Falls back to the old absolute-price score only if asking prices are
+    # unavailable; the methodology text says which basis was used.)
     performance["priceScore"] = normalize(
-        performance["averagePrice"]
+        performance["bidPremiumPct"] if premium_available else performance["averagePrice"]
     )
 
     # More listings = better market activity
@@ -232,6 +255,7 @@ def get_crop_recommendation_scores() -> dict:
 
     numeric_columns = [
         "averagePrice",
+        *(["bidPremiumPct"] if premium_available else []),
         "coefficientOfVariation",
         "priceScore",
         "listingScore",
@@ -264,6 +288,7 @@ def get_crop_recommendation_scores() -> dict:
             "cropName",
             "listings",
             "averagePrice",
+            *(["bidPremiumPct"] if premium_available else []),
             "coefficientOfVariation",
             "priceScore",
             "listingScore",
@@ -283,7 +308,11 @@ def get_crop_recommendation_scores() -> dict:
             result["cropName"].nunique()
         ),
         "methodology": (
-            f"marketScore = priceScore*{PRICE_WEIGHT} + listingScore*{LISTING_WEIGHT} "
+            ("priceScore = how far buyers bid above the asking price (demand strength; "
+             "comparable across crops). " if premium_available else
+             "priceScore = absolute average price (asking prices unavailable, so expensive crops "
+             "are favoured - treat with caution). ")
+            + f"marketScore = priceScore*{PRICE_WEIGHT} + listingScore*{LISTING_WEIGHT} "
             f"+ stabilityScore*{STABILITY_WEIGHT}. These weights are a documented "
             "judgment call, not derived from data - decision backtesting (separate "
             "feature) is what actually validates whether this scoring correlates "

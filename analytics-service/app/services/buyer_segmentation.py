@@ -26,6 +26,7 @@ import numpy as np
 from datetime import datetime, timezone
 from app.services.data_loader import load_transactions
 from app.utils.ttl_cache import ttl_cache
+from app.services.segmentation_quality import evaluate_clustering
 
 
 @ttl_cache(seconds=300)  # K-Means re-clustering every buyer on every request was the other big slow spot
@@ -56,8 +57,14 @@ def segment_buyers(n_clusters: int = 3) -> dict:
 
     features = rfm[["recencyDays", "frequency", "monetary"]].copy()
 
-    # standardize manually (mean 0, std 1) — avoids adding a hard sklearn
-    # dependency just for scaling, and is easy to explain in a viva
+    # Frequency and spend are heavy-tailed (a few very big buyers, many small
+    # ones). Standardising them raw lets one whale dominate the distance and
+    # form a cluster of its own, so they are log-transformed first - the
+    # standard treatment for RFM data. Recency is left as is.
+    features["frequency"] = np.log1p(features["frequency"])
+    features["monetary"] = np.log1p(features["monetary"])
+
+    # standardize manually (mean 0, std 1) — easy to explain in a viva
     standardized = (features - features.mean()) / features.std().replace(0, 1)
 
     try:
@@ -94,4 +101,6 @@ def segment_buyers(n_clusters: int = 3) -> dict:
         "summary": segment_summary.to_dict(orient="records"),
         "buyers": buyer_detail.to_dict(orient="records"),
         "totalBuyers": len(rfm),
+        "clusterQuality": evaluate_clustering(standardized.to_numpy(dtype=float), n_clusters),
+        "method": "RFM (recency, log frequency, log spend) -> standardised -> K-Means",
     }

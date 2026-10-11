@@ -1,5 +1,6 @@
 import pandas as pd
 from app.services.data_loader import load_crops, load_bids, load_transactions
+from app.utils.ttl_cache import ttl_cache
 
 
 def detect_outliers(series: pd.Series):
@@ -97,6 +98,7 @@ def _correlation_analysis(crops_df: pd.DataFrame) -> dict:
     }
 
 
+@ttl_cache(seconds=300)
 def generate_eda_report():
     crops = load_crops()
     bids = load_bids()

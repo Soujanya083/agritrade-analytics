@@ -1,0 +1,64 @@
+name: CI
+
+# Runs on every push and pull request. Three independent jobs, so a failure
+# in one service is visible without hiding the others.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  server:
+    name: Node backend (Jest + in-memory MongoDB)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+      - run: npm test
+
+  analytics:
+    name: Analytics service (pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: analytics-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: analytics-service/requirements*.txt
+      - run: pip install -r requirements-dev.txt
+      # No MongoDB, API keys or network are needed: tests are hermetic.
+      - run: python -m pytest -q
+
+  frontend:
+    name: React app (Jest + production build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agribid
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: agribid/package-lock.json
+      - run: npm ci
+      - run: npm test -- --watchAll=false
+      # CI=true (set by GitHub) makes CRA treat ESLint warnings as errors, so
+      # this also acts as a lint gate.
+      - run: npm run build

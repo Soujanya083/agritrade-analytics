@@ -1,7 +1,7 @@
 fastapi==0.115.0
 uvicorn[standard]==0.30.6
 pymongo==4.8.0
-motor==3.5.1
+dnspython==2.6.1
 pandas==2.2.2
 numpy==1.26.4
 scikit-learn==1.5.1
@@ -10,18 +10,7 @@ statsmodels==0.14.4
 shap==0.46.0
 python-dotenv==1.0.1
 pydantic==2.8.2
-
-fastapi
-uvicorn[standard]
-pymongo
-motor
-pandas
-numpy
-scikit-learn
-prophet
-statsmodels
-shap
-python-dotenv
-pydantic
-bcrypt
-requests
+PyJWT==2.9.0
+requests==2.32.3
+# only used by seed_data.py (hashing the demo users' passwords):
+bcrypt==4.2.0

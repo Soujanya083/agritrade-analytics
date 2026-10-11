@@ -15,6 +15,7 @@ forecast; the two are never blended into a fabricated "profit".
 
 import numpy as np
 import pandas as pd
+from app.utils.ttl_cache import ttl_cache
 
 DEFAULT_HORIZON_DAYS = 7
 
@@ -79,6 +80,7 @@ def _recommend_sell_or_wait(current_price: float, forecasted_price):
     return "Sell Now", f"Forecast expects only a {change_percent:.1f}% change - not worth the wait."
 
 
+@ttl_cache(seconds=300)
 def get_sell_or_wait_recommendation(crop_name: str, horizon_days: int = DEFAULT_HORIZON_DAYS) -> dict:
     """
     Live sell-now-vs-wait recommendation for a crop, using its full

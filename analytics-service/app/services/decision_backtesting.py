@@ -34,6 +34,7 @@ from app.services.decision_engine import (
     _actual_price_after,
     _recommend_sell_or_wait,
 )
+from app.utils.ttl_cache import ttl_cache
 
 
 def _first_bid_price(bids_df: pd.DataFrame, crop_id: str):
@@ -43,6 +44,7 @@ def _first_bid_price(bids_df: pd.DataFrame, crop_id: str):
     return float(crop_bids.iloc[0]["amount"])
 
 
+@ttl_cache(seconds=600)
 def backtest_decisions(horizon_days: int = DEFAULT_HORIZON_DAYS) -> dict:
     """
     Backtests AgriTrade's sell-now-vs-wait recommendation against

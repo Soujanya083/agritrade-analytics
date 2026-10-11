@@ -7,8 +7,13 @@ from app.services.data_loader import (
 )
 
 from app.services.anomaly_detection import detect_bid_anomalies
+from app.services.market_insights import most_sold_crop_name
+from app.utils.ttl_cache import ttl_cache
+
+PLATFORM_FEE_PERCENT = 5  # mirrors platformFee = 5% in server/server.js
 
 
+@ttl_cache(seconds=120)
 def get_dashboard_summary() -> dict:
     """
     Generate an overall analytics summary for the AgriTrade dashboard.
@@ -61,67 +66,7 @@ def get_dashboard_summary() -> dict:
     # Find top selling crop
     # -----------------------------------
 
-    top_selling_crop = "No data available"
-
-    if not transactions_df.empty:
-
-        possible_crop_columns = [
-            "cropName",
-            "crop",
-            "cropId"
-        ]
-
-        crop_column = None
-
-        for column in possible_crop_columns:
-
-            if column in transactions_df.columns:
-                crop_column = column
-                break
-
-        if crop_column:
-
-            # Find most frequent crop ID/name
-            top_crop_value = (
-                transactions_df[crop_column]
-                .value_counts()
-                .idxmax()
-            )
-
-            # If transactions already contain cropName
-            if crop_column == "cropName":
-
-                top_selling_crop = str(top_crop_value)
-
-            else:
-
-                # Convert crop ID into crop name
-                if not crops_df.empty:
-
-                    if "_id" in crops_df.columns and "cropName" in crops_df.columns:
-
-                        matching_crop = crops_df[
-                            crops_df["_id"].astype(str)
-                            == str(top_crop_value)
-                        ]
-
-                        if not matching_crop.empty:
-
-                            top_selling_crop = str(
-                                matching_crop.iloc[0]["cropName"]
-                            )
-
-                        else:
-
-                            top_selling_crop = str(top_crop_value)
-
-                    else:
-
-                        top_selling_crop = str(top_crop_value)
-
-                else:
-
-                    top_selling_crop = str(top_crop_value)
+    top_selling_crop = most_sold_crop_name(transactions_df, crops_df) or "No data available"
 
     # -----------------------------------
     # Anomaly detection summary
@@ -142,75 +87,302 @@ def get_dashboard_summary() -> dict:
     # -----------------------------------
     # Final dashboard response
     # -----------------------------------
+    # (This return was missing in the original: the function ended after
+    # computing everything, so GET /dashboard-summary returned `null`.)
+
+    return {
+        "totalCrops": total_crops,
+        "totalBids": total_bids,
+        "totalTransactions": total_transactions,
+        "averageCropPrice": average_crop_price,
+        "topSellingCrop": top_selling_crop,
+        "anomaliesDetected": anomalies_detected,
+        "anomalyPercentage": anomaly_percentage,
+    }
+
+
+def _real_market_signal(crop_name, farmer_state):
+    """
+    Forecast from REAL imported AGMARKNET history for this crop, or None when
+    none has been imported (the summary then falls back to marketplace data).
+    State-level history is preferred; All-India is the fallback.
+    """
+    try:
+        from app.services.market import real_market
+
+        names = [c["commodity"] for c in real_market.real_market_commodities()]
+        commodity = real_market.resolve_mandi_commodity(crop_name, names)
+        if not commodity:
+            return None
+        scopes = ([farmer_state] if farmer_state else []) + [None]
+        for scope in scopes:
+            result = real_market.forecast_real_market(commodity, scope, None, 14)
+            if "error" not in result:
+                return {"commodity": commodity, "scope": scope or "All India", "result": result}
+    except Exception:  # DB not reachable etc. - the summary must still work
+        return None
+    return None
+
+
+def _provenance():
+    try:
+        from app.services.provenance import get_data_provenance
+
+        return get_data_provenance()
+    except Exception:
+        return None
+
+
+def _confidence_real(real):
+    """Confidence for a forecast learned from real AGMARKNET history - rule and reasons are returned."""
+    result = real["result"]
+    days = result["dataQuality"].get("daysInSeries", 0)
+    reasons, score = [], 0
+    if days >= 730:
+        score += 2
+        reasons.append(f"{days} days (~{days / 365:.1f} years) of real mandi history.")
+    elif days >= 365:
+        score += 1
+        reasons.append(f"{days} days of real mandi history (about a year).")
+    else:
+        reasons.append(f"Only {days} days of real mandi history.")
+    if result["champion"]["beatsNaive"]:
+        score += 2
+        reasons.append("Backtest: " + result["champion"]["reason"])
+    else:
+        reasons.append("Backtest: no model reliably beat 'price stays where it is', so that is the forecast. "
+                       "Treat the range, not the point, as the message.")
+    coverage = result["intervalCoverage"].get("empirical")
+    if coverage is not None and coverage >= 0.8:
+        score += 1
+        reasons.append(f"Out-of-sample check: the 90% range contained the real price {coverage * 100:.0f}% of the time.")
+    elif coverage is not None:
+        reasons.append(f"The 90% range contained the real price only {coverage * 100:.0f}% of the time in testing.")
+    level = "High" if score >= 4 else "Medium" if score >= 2 else "Low"
+    return {"level": level, "reasons": reasons}
+
+
+def _confidence(history_points, model_name, beats_naive):
+    """Transparent rule-of-thumb confidence label - the rule is returned with it."""
+    reasons = []
+    score = 0
+    if history_points is None:
+        reasons.append("No marketplace price history for this crop.")
+    elif history_points >= 45:
+        score += 2
+        reasons.append(f"{history_points} days of price history.")
+    elif history_points >= 15:
+        score += 1
+        reasons.append(f"Only {history_points} days of price history.")
+    else:
+        reasons.append(f"Very little price history ({history_points} days).")
+
+    if beats_naive is True:
+        score += 1
+        reasons.append("Backtest: the model beat the naive baseline.")
+    elif beats_naive is False:
+        reasons.append("Backtest: the model did NOT beat the naive baseline.")
+    else:
+        reasons.append("Backtest accuracy unavailable for this crop.")
+
+    if model_name and "Fallback" in model_name:
+        reasons.append("Simple linear-trend fallback used instead of Prophet.")
+    else:
+        score += 1 if model_name else 0
+
+    level = "High" if score >= 4 else "Medium" if score >= 2 else "Low"
+    return {"level": level, "reasons": reasons}
+
+
+def _cap_for_synthetic(confidence, provenance):
+    """Forecasts learned mostly from synthetic demo data can never be 'High'/'Medium'."""
+    if provenance and provenance.get("mostlySynthetic"):
+        return {
+            "level": "Low",
+            "reasons": confidence["reasons"] + [
+                f"{provenance['syntheticPercent']}% of the marketplace records this forecast learned from are synthetic demo data."],
+        }
+    return confidence
+
+
+def _demand_level(crop_name):
+    from app.services.recommendation import recommend_crops
+
+    ranked = recommend_crops(top_n=1000)
+    entry = next((c for c in ranked if str(c.get("cropName", "")).lower() == crop_name.lower()), None)
+    if not entry:
+        return "Unknown", None
+    score = entry.get("opportunityScore", 0)
+    level = "High" if score >= 1.5 else "Medium" if score >= 0.7 else "Low"
+    return level, round(float(score), 2)
+
 
 def get_crop_decision_summary(crop_name: str, farmer_state: str = None, quantity_kg: float = None) -> dict:
     """
-    One plain-language "what should I do" card for a single crop -
-    combines the price forecast, a demand level, and the net-profit
-    market recommendation into a single answer, rather than leaving a
-    farmer to interpret several separate charts themselves. This is
-    the "Final Dashboard" summary the project's original checklist
-    called for (Predicted Price / Demand / Best Market / Net Profit /
-    "SELL AT MARKET B") - the detailed charts already built are useful
-    supporting evidence, but nothing summarized them into one answer
-    until this endpoint.
+    One plain-language "what should I do?" answer for a single crop,
+    assembled ONLY from values the project actually computes:
+
+      * predicted price  - Prophet / linear forecast on marketplace listings
+      * demand level     - demand-vs-supply opportunity score (recommendation.py)
+      * best market      - real AGMARKNET mandi prices minus disclosed
+                           flat transport/storage assumptions
+      * revenue / cost / net profit - from that best market's modal price
+      * sell-or-wait     - decision_engine.py's rule on the same price series
+      * confidence       - derived from history length + backtest result
+
+    If a component can't be computed it is left out and listed in
+    `warnings`; nothing is filled in with a made-up value. Raises-by-
+    return {"error": ...} only if NOTHING could be computed for the crop.
     """
     from app.services.price_prediction import predict_price
-    from app.services.recommendation import recommend_crops
     from app.services.market_recommendation import get_market_recommendation
+    from app.services.decision_engine import get_sell_or_wait_recommendation
+    from app.services.model_evaluation import backtest_price_model
 
-    forecast_result = predict_price(crop_name, days_ahead=7)
-    predicted_price = None
-    if "forecast" in forecast_result and forecast_result["forecast"]:
-        predicted_price = round(forecast_result["forecast"][-1]["yhat"], 2)
+    warnings = []
+    forecast = predict_price(crop_name, days_ahead=7)
+    if "error" in forecast:
+        warnings.append(forecast["error"])
+        forecast = None
 
-    # Demand level: look this crop up among ALL ranked crops, not just
-    # the top N - recommend_crops() defaults to a short top-N list for
-    # its own "top opportunities" use case, but here we need this one
-    # specific crop's score even if it isn't a top pick.
-    all_crops_ranked = recommend_crops(top_n=1000)
-    demand_level = "Unknown"
-    crop_entry = next(
-        (c for c in all_crops_ranked if str(c.get("cropName", "")).lower() == crop_name.lower()),
-        None,
-    )
-    if crop_entry:
-        opportunity_score = crop_entry.get("opportunityScore", 0)
-        if opportunity_score >= 1.5:
-            demand_level = "High"
-        elif opportunity_score >= 0.7:
-            demand_level = "Medium"
-        else:
-            demand_level = "Low"
+    predicted_price = model_name = history_points = None
+    if forecast and forecast.get("forecast"):
+        predicted_price = round(forecast["forecast"][-1]["yhat"], 2)
+        model_name = forecast.get("model")
+        history_points = forecast.get("historyPoints")
 
+    sell_wait = get_sell_or_wait_recommendation(crop_name)
+    if "error" in sell_wait:
+        sell_wait = None
+
+    beats_naive = None
+    if forecast:
+        backtest = backtest_price_model(crop_name)
+        if "error" not in backtest:
+            beats_naive = backtest.get("bestModelBeatsNaiveBaseline")
+
+    demand_level, opportunity_score = _demand_level(crop_name)
     market_rec = get_market_recommendation(crop_name, farmer_state, quantity_kg)
 
-    if "error" in market_rec:
-        return {
-            "cropName": crop_name,
-            "predictedPrice": predicted_price,
-            "demandLevel": demand_level,
-            "actionText": "Not enough market data available yet to recommend where to sell.",
-            "marketRecommendationError": market_rec["error"],
+    real = _real_market_signal(crop_name, farmer_state)
+
+    if real is None and forecast is None and "error" in market_rec and demand_level == "Unknown":
+        return {"error": f"No marketplace or mandi data found for crop '{crop_name}'."}
+
+    provenance = _provenance()
+    price_source = "marketplace_listings"
+    price_range = None
+    real_confidence = None
+    marketplace_price = predicted_price
+    if real:
+        point = real["result"]["forecast"][min(6, len(real["result"]["forecast"]) - 1)]
+        predicted_price = round(point["point"], 2)
+        price_range = {"lower": point["lower"], "upper": point["upper"], "level": 0.9}
+        model_name = real["result"]["champion"]["label"] + " (AGMARKNET)"
+        history_points = real["result"]["dataQuality"].get("daysInSeries")
+        price_source = "agmarknet_real"
+        real_confidence = _confidence_real(real)
+        warnings = [w for w in warnings if "price history" not in w.lower()]
+
+    summary = {
+        "cropName": crop_name,
+        "predictedPrice": predicted_price,              # INR per kg, +7 days
+        "predictedPriceModel": model_name,
+        "predictedPriceSource": price_source,           # agmarknet_real | marketplace_listings
+        "predictedPriceRange": price_range,
+        "marketplacePredictedPrice": marketplace_price if real else None,
+        "dataProvenance": provenance,
+        "realMarket": None if not real else {
+            "commodity": real["commodity"], "scope": real["scope"],
+            "lastObserved": real["result"]["lastObserved"],
+            "champion": real["result"]["champion"],
+            "intervalCoverage": real["result"]["intervalCoverage"],
+            "dataQuality": real["result"]["dataQuality"],
+        },
+        "currentMarketplacePrice": sell_wait["currentPrice"] if sell_wait else None,
+        "demandLevel": demand_level,
+        "opportunityScore": opportunity_score,
+        "quantityKg": quantity_kg,
+        "confidence": real_confidence or _cap_for_synthetic(
+            _confidence(history_points, model_name, beats_naive), provenance),
+        "limitations": [
+            ("Price forecast is learned from real AGMARKNET mandi history (" + real["scope"] + "), not from this marketplace's listings."
+             if real else
+             "Price forecast is learned from this marketplace's own listings only; it is not a national price forecast."),
+            "Transport and storage costs are disclosed flat-rate assumptions, not measured logistics data.",
+            "Mandi prices come from AGMARKNET (data.gov.in); the source is shown below.",
+            "Decision support, not a guarantee of outcome.",
+        ],
+        "warnings": warnings,
+    }
+
+    # Sell-now-or-wait signal on the marketplace price series.
+    if sell_wait:
+        summary["timing"] = {
+            "recommendation": sell_wait["recommendation"],
+            "reason": sell_wait["reason"],
+            "horizonDays": sell_wait["horizonDays"],
         }
 
-    best = market_rec["recommendedMarket"]
-    net_profit = best["expectedNetProfitPerQuintal"]
-    action = (
-        f"SELL AT {best['market'].upper()}"
-        if net_profit > 0
-        else "CONSIDER HOLDING — no available market currently covers transport and storage costs"
-    )
+    # With real AGMARKNET history the timing signal comes from THAT forecast: only
+    # "Wait" when the whole 90% range sits above today's price and a model beat naive.
+    if real:
+        result = real["result"]
+        last = result["lastObserved"]["price"]
+        point = result["forecast"][min(6, len(result["forecast"]) - 1)]
+        gain_pct = (point["point"] / last - 1) * 100 if last else 0
+        confident_rise = result["champion"]["beatsNaive"] and point["lower"] > last and gain_pct >= 3
+        summary["timing"] = {
+            "recommendation": "Wait" if confident_rise else "Sell Now",
+            "reason": (f"The forecast range (Rs.{point['lower']}-{point['upper']}/kg) is entirely above today's Rs.{last}/kg."
+                       if confident_rise else
+                       "No statistically reliable price rise is forecast, so waiting adds risk without an expected gain."),
+            "horizonDays": 7,
+            "basis": "agmarknet_real",
+        }
+        summary["currentMarketplacePrice"] = summary.get("currentMarketplacePrice")
+        summary["currentMandiPrice"] = last
 
-    return {
-        "cropName": crop_name,
-        "predictedPrice": predicted_price,
-        "demandLevel": demand_level,
+    # What selling on THIS platform at the forecast price would look like.
+    if predicted_price is not None and quantity_kg:
+        gross = round(predicted_price * quantity_kg, 2)
+        fee = round(gross * PLATFORM_FEE_PERCENT / 100, 2)
+        summary["platformForecast"] = {
+            "expectedRevenue": gross,
+            "platformFeePercent": PLATFORM_FEE_PERCENT,
+            "expectedPayout": round(gross - fee, 2),
+        }
+
+    if "error" in market_rec:
+        warnings.append(market_rec["error"])
+        summary["actionText"] = "Not enough market data available yet to recommend where to sell."
+        summary["marketRecommendationError"] = market_rec["error"]
+        return summary
+
+    best = market_rec["recommendedMarket"]
+    net_per_quintal = best["expectedNetProfitPerQuintal"]
+    per_quintal_cost = best["transportCostPerQuintal"] + best["storageCostPerQuintal"]
+
+    summary.update({
         "bestMarket": best["market"],
         "bestMarketDistrict": best["district"],
         "bestMarketState": best["state"],
-        "expectedNetProfitPerQuintal": net_profit,
+        "bestMarketModalPricePerQuintal": best["modalPricePerQuintal"],
+        "expectedNetProfitPerQuintal": net_per_quintal,
         "expectedTotalNetProfit": best.get("expectedTotalNetProfit"),
-        "actionText": action,
+        "mandiDataSource": market_rec.get("source"),
         "assumptions": market_rec["assumptions"],
-    }
+    })
+    if quantity_kg:
+        summary["expectedRevenue"] = round(best["modalPricePerQuintal"] * quantity_kg / 100, 2)
+        summary["expectedCost"] = round(per_quintal_cost * quantity_kg / 100, 2)
+        summary["expectedNetProfit"] = best.get("expectedTotalNetProfit")
+
+    if net_per_quintal > 0:
+        action = f"SELL AT {best['market'].upper()}"
+        if summary.get("timing", {}).get("recommendation") == "Wait":
+            action += f" - but the marketplace trend suggests waiting: {summary['timing']['reason']}"
+    else:
+        action = "CONSIDER HOLDING - no available market currently covers transport and storage costs"
+    summary["actionText"] = action
+    return summary

@@ -2,389 +2,23 @@ import React, { useEffect, useMemo, useState } from 'react';
 import './DashboardPage.css';
 import AnalyticsPanel from './AnalyticsPanel';
 import MarketIntelligenceDashboard from './MarketIntelligenceDashboard';
+import CompanionPlanting from '../Companion/CompanionPlanting';
+import { ListingImage } from './listingImages';
+import { prepareImageForUpload, todayIso } from '../../utils/imageTools';
 
 const API_BASE =
   process.env.REACT_APP_API_BASE_URL ||
   `http://${window.location.hostname || 'localhost'}:5000/api`;
 
-const COMPANION_GUIDE = [
-  {
-    crop: 'Tomato',
-    season: 'Warm season',
-    category: 'Vegetables',
-    bestWith: ['Basil', 'Marigold', 'Onion'],
-    avoid: ['Potato', 'Cabbage'],
-    benefits: [
-      'Repels pests naturally',
-      'Improves bed diversity',
-      'Supports healthier fruit set',
-    ],
-    tip: 'Keep plants spaced and prune lower leaves for airflow.',
-  },
-  {
-    crop: 'Onion',
-    season: 'Winter',
-    category: 'Vegetables',
-    bestWith: ['Carrot', 'Beetroot', 'Lettuce'],
-    avoid: ['Beans', 'Peas'],
-    benefits: [
-      'Deters carrot fly',
-      'Uses limited space efficiently',
-      'Pairs well in mixed beds',
-    ],
-    tip: 'Intercrop in rows to keep harvesting simple.',
-  },
-  {
-    crop: 'Carrot',
-    season: 'Winter',
-    category: 'Vegetables',
-    bestWith: ['Onion', 'Leek', 'Radish'],
-    avoid: ['Dill', 'Parsnip'],
-    benefits: [
-      'Helpful root pairing',
-      'Reduces pest pressure',
-      'Improves soil coverage',
-    ],
-    tip: 'Use loose, stone-free soil for straight roots.',
-  },
-  {
-    crop: 'Potato',
-    season: 'Winter/Spring',
-    category: 'Vegetables',
-    bestWith: ['Beans', 'Cabbage', 'Corn'],
-    avoid: ['Tomato', 'Cucumber'],
-    benefits: [
-      'Encourages mixed rooting depth',
-      'Makes better use of bed area',
-      'Balances nutrients',
-    ],
-    tip: 'Rotate beds each season to reduce disease buildup.',
-  },
-  {
-    crop: 'Cotton',
-    season: 'Summer',
-    category: 'Grains',
-    bestWith: ['Onion', 'Sunflower', 'Cowpea'],
-    avoid: ['Potato', 'Brinjal'],
-    benefits: [
-      'Supports beneficial insects',
-      'Provides border diversity',
-      'Improves field resilience',
-    ],
-    tip: 'Use border crops to attract pollinators and reduce pests.',
-  },
-  {
-    crop: 'Sugarcane',
-    season: 'Year-round',
-    category: 'Grains',
-    bestWith: ['Coriander', 'Onion', 'Garlic'],
-    avoid: ['Mustard'],
-    benefits: [
-      'Gives space for short-duration crops',
-      'Improves land use',
-      'Supports staggered harvesting',
-    ],
-    tip: 'Intercrop only while the cane canopy is still open.',
-  },
-  {
-    crop: 'Maize',
-    season: 'Kharif/Summer',
-    category: 'Grains',
-    bestWith: ['Beans', 'Pumpkin', 'Cowpea'],
-    avoid: ['Rice'],
-    benefits: [
-      'Creates a support structure for climbers',
-      'Spreads risk across crops',
-      'Improves soil cover',
-    ],
-    tip: 'Plant climbers after maize is established.',
-  },
-  {
-    crop: 'Beans',
-    season: 'Warm season',
-    category: 'Vegetables',
-    bestWith: ['Maize', 'Carrot', 'Cabbage'],
-    avoid: ['Onion', 'Garlic'],
-    benefits: [
-      'Fixes nitrogen',
-      'Boosts soil fertility',
-      'Fits well in mixed rows',
-    ],
-    tip: 'Avoid over-fertilizing with nitrogen when intercropping.',
-  },
-  {
-    crop: 'Mango',
-    season: 'Summer',
-    category: 'Fruits',
-    bestWith: ['Turmeric', 'Ginger', 'Pigeon Pea'],
-    avoid: ['Banana close spacing', 'Potato'],
-    benefits: [
-      'Allows under-canopy intercrops',
-      'Supports deep-root harmony',
-      'Improves orchard land use',
-    ],
-    tip: 'Keep understory crops low and avoid shading young trees.',
-  },
-  {
-    crop: 'Banana',
-    season: 'Year-round',
-    category: 'Fruits',
-    bestWith: ['Coriander', 'Spinach', 'Beans'],
-    avoid: ['Potato', 'Brinjal'],
-    benefits: [
-      'Works well in humid mixed plots',
-      'Adds quick ground cover',
-      'Benefits from short-duration intercrops',
-    ],
-    tip: 'Maintain wide spacing and steady moisture for best results.',
-  },
-  {
-    crop: 'Citrus',
-    season: 'Spring/Summer',
-    category: 'Fruits',
-    bestWith: ['Legumes', 'Alyssum', 'Marigold'],
-    avoid: ['Wheat', 'Heavy climbers'],
-    benefits: [
-      'Attracts pollinators',
-      'Helps suppress weeds',
-      'Supports orchard biodiversity',
-    ],
-    tip: 'Use low-growing companions so roots and canopy do not compete.',
-  },
-  {
-    crop: 'Grapes',
-    season: 'Summer',
-    category: 'Fruits',
-    bestWith: ['Garlic', 'Chives', 'Clover'],
-    avoid: ['Potato', 'Tomato'],
-    benefits: [
-      'Improves pest management',
-      'Covers exposed soil',
-      'Helps maintain vineyard balance',
-    ],
-    tip: 'Prune regularly and keep companion plants away from the vine base.',
-  },
-  {
-    crop: 'Papaya',
-    season: 'Warm season',
-    category: 'Fruits',
-    bestWith: ['Marigold', 'Sweet Potato', 'Beans'],
-    avoid: ['Banana dense planting'],
-    benefits: [
-      'Provides useful mixed cropping space',
-      'Encourages pollinator activity',
-      'Reduces bare soil exposure',
-    ],
-    tip: 'Avoid waterlogging and give each plant enough sunlight.',
-  },
-];
 
-const encodeSvgDataUri = (svg) =>
-  `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
-
-const LISTING_IMAGES = {
-  Grains: encodeSvgDataUri(`
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 320">
-      <rect width="480" height="320" rx="28" fill="#fef3c7"/>
-      <path d="M0 220C70 190 120 180 180 200C250 225 300 175 360 182C410 188 445 198 480 186V320H0Z" fill="#fcd34d"/>
-      <path d="M0 240C80 205 145 210 205 224C270 240 310 210 372 206C417 203 450 210 480 202V320H0Z" fill="#d97706"/>
-      <text x="36" y="286" fill="#7c2d12" font-family="Arial" font-size="28" font-weight="700">Grains</text>
-    </svg>
-  `),
-
-  Vegetables: encodeSvgDataUri(`
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 320">
-      <rect width="480" height="320" rx="28" fill="#dcfce7"/>
-      <circle cx="145" cy="180" r="48" fill="#f97316"/>
-      <circle cx="228" cy="170" r="56" fill="#ef4444"/>
-      <circle cx="314" cy="184" r="50" fill="#84cc16"/>
-      <path d="M0 244H480V320H0Z" fill="#86efac"/>
-      <text x="36" y="286" fill="#166534" font-family="Arial" font-size="28" font-weight="700">Vegetables</text>
-    </svg>
-  `),
-
-  Fruits: encodeSvgDataUri(`
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 320">
-      <rect width="480" height="320" rx="28" fill="#ffe4e6"/>
-      <circle cx="160" cy="176" r="56" fill="#fb7185"/>
-      <circle cx="245" cy="162" r="62" fill="#f97316"/>
-      <circle cx="332" cy="182" r="50" fill="#eab308"/>
-      <text x="36" y="286" fill="#9f1239" font-family="Arial" font-size="28" font-weight="700">Fruits</text>
-    </svg>
-  `),
-};
-
-// Per-crop icons for the crops most likely to be listed, so listings
-// show a recognizable icon instead of just a generic category
-// placeholder. Falls back to the category placeholder for any crop
-// name not covered here - the marketplace accepts free-text crop
-// names, so this can never be a complete fixed list, only a set of
-// the most common ones worth a dedicated icon.
-const CROP_IMAGES = {
-  wheat: encodeSvgDataUri(`
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 320">
-      <rect width="480" height="320" rx="28" fill="#fef3c7"/>
-      <path d="M240 260V90" stroke="#b45309" stroke-width="6"/>
-      <path d="M240 100C220 90 205 100 200 115C220 118 235 112 240 100Z" fill="#d97706"/>
-      <path d="M240 100C260 90 275 100 280 115C260 118 245 112 240 100Z" fill="#d97706"/>
-      <path d="M240 130C220 120 205 130 200 145C220 148 235 142 240 130Z" fill="#d97706"/>
-      <path d="M240 130C260 120 275 130 280 145C260 148 245 142 240 130Z" fill="#d97706"/>
-      <path d="M240 160C220 150 205 160 200 175C220 178 235 172 240 160Z" fill="#d97706"/>
-      <path d="M240 160C260 150 275 160 280 175C260 178 245 172 240 160Z" fill="#d97706"/>
-      <text x="36" y="286" fill="#7c2d12" font-family="Arial" font-size="28" font-weight="700">Wheat</text>
-    </svg>
-  `),
-
-  rice: encodeSvgDataUri(`
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 320">
-      <rect width="480" height="320" rx="28" fill="#ecfccb"/>
-      <ellipse cx="180" cy="150" rx="18" ry="34" fill="#f8fafc" stroke="#a3a3a3" stroke-width="2"/>
-      <ellipse cx="220" cy="140" rx="18" ry="34" fill="#f8fafc" stroke="#a3a3a3" stroke-width="2"/>
-      <ellipse cx="260" cy="150" rx="18" ry="34" fill="#f8fafc" stroke="#a3a3a3" stroke-width="2"/>
-      <ellipse cx="300" cy="142" rx="18" ry="34" fill="#f8fafc" stroke="#a3a3a3" stroke-width="2"/>
-      <text x="36" y="286" fill="#365314" font-family="Arial" font-size="28" font-weight="700">Rice</text>
-    </svg>
-  `),
-
-  maize: encodeSvgDataUri(`
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 320">
-      <rect width="480" height="320" rx="28" fill="#fef9c3"/>
-      <ellipse cx="240" cy="160" rx="60" ry="95" fill="#facc15"/>
-      <path d="M200 90C210 70 270 70 280 90" stroke="#16a34a" stroke-width="10" fill="none"/>
-      <text x="36" y="286" fill="#854d0e" font-family="Arial" font-size="28" font-weight="700">Maize</text>
-    </svg>
-  `),
-
-  corn: encodeSvgDataUri(`
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 320">
-      <rect width="480" height="320" rx="28" fill="#fef9c3"/>
-      <ellipse cx="240" cy="160" rx="60" ry="95" fill="#facc15"/>
-      <path d="M200 90C210 70 270 70 280 90" stroke="#16a34a" stroke-width="10" fill="none"/>
-      <text x="36" y="286" fill="#854d0e" font-family="Arial" font-size="28" font-weight="700">Corn</text>
-    </svg>
-  `),
-
-  millet: encodeSvgDataUri(`
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 320">
-      <rect width="480" height="320" rx="28" fill="#fef3c7"/>
-      <path d="M240 260V100" stroke="#92400e" stroke-width="6"/>
-      <circle cx="230" cy="110" r="7" fill="#a16207"/>
-      <circle cx="250" cy="120" r="7" fill="#a16207"/>
-      <circle cx="228" cy="132" r="7" fill="#a16207"/>
-      <circle cx="252" cy="142" r="7" fill="#a16207"/>
-      <circle cx="230" cy="154" r="7" fill="#a16207"/>
-      <text x="36" y="286" fill="#7c2d12" font-family="Arial" font-size="28" font-weight="700">Millet</text>
-    </svg>
-  `),
-
-  tomato: encodeSvgDataUri(`
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 320">
-      <rect width="480" height="320" rx="28" fill="#fee2e2"/>
-      <circle cx="240" cy="180" r="66" fill="#ef4444"/>
-      <path d="M215 122C225 108 255 108 265 122" stroke="#16a34a" stroke-width="8" fill="none"/>
-      <text x="36" y="286" fill="#991b1b" font-family="Arial" font-size="28" font-weight="700">Tomato</text>
-    </svg>
-  `),
-
-  orange: encodeSvgDataUri(`
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 320">
-      <rect width="480" height="320" rx="28" fill="#ffedd5"/>
-      <circle cx="240" cy="175" r="68" fill="#f97316"/>
-      <circle cx="240" cy="175" r="68" fill="none" stroke="#ea580c" stroke-width="3"/>
-      <path d="M240 107C246 96 258 92 266 94" stroke="#4d7c0f" stroke-width="7" fill="none"/>
-      <ellipse cx="252" cy="94" rx="14" ry="8" fill="#4d7c0f" transform="rotate(20 252 94)"/>
-      <text x="36" y="286" fill="#9a3412" font-family="Arial" font-size="28" font-weight="700">Orange</text>
-    </svg>
-  `),
-
-  carrot: encodeSvgDataUri(`
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 320">
-      <rect width="480" height="320" rx="28" fill="#ffedd5"/>
-      <path d="M240 100L270 220C270 236 210 236 210 220Z" fill="#fb923c" stroke="#ea580c" stroke-width="3"/>
-      <path d="M225 90C215 65 200 55 185 58" stroke="#16a34a" stroke-width="7" fill="none"/>
-      <path d="M240 88C240 60 240 48 240 42" stroke="#16a34a" stroke-width="7" fill="none"/>
-      <path d="M255 90C265 65 280 55 295 58" stroke="#16a34a" stroke-width="7" fill="none"/>
-      <text x="36" y="286" fill="#9a3412" font-family="Arial" font-size="28" font-weight="700">Carrot</text>
-    </svg>
-  `),
-
-  onion: encodeSvgDataUri(`
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 320">
-      <rect width="480" height="320" rx="28" fill="#fdf2f8"/>
-      <path d="M240 90C280 130 290 190 240 220C190 190 200 130 240 90Z" fill="#c026d3"/>
-      <path d="M240 90V70" stroke="#4d7c0f" stroke-width="6"/>
-      <text x="36" y="286" fill="#701a75" font-family="Arial" font-size="28" font-weight="700">Onion</text>
-    </svg>
-  `),
-
-  potato: encodeSvgDataUri(`
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 320">
-      <rect width="480" height="320" rx="28" fill="#fef3c7"/>
-      <ellipse cx="240" cy="170" rx="80" ry="55" fill="#ca8a04"/>
-      <circle cx="210" cy="160" r="4" fill="#78350f"/>
-      <circle cx="260" cy="185" r="4" fill="#78350f"/>
-      <circle cx="245" cy="150" r="4" fill="#78350f"/>
-      <text x="36" y="286" fill="#78350f" font-family="Arial" font-size="28" font-weight="700">Potato</text>
-    </svg>
-  `),
-
-  chili: encodeSvgDataUri(`
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 320">
-      <rect width="480" height="320" rx="28" fill="#fef2f2"/>
-      <path d="M200 120C260 130 300 170 280 210C260 245 210 235 200 195C192 165 180 140 200 120Z" fill="#dc2626"/>
-      <path d="M200 120C195 105 185 98 175 100" stroke="#15803d" stroke-width="8" fill="none"/>
-      <text x="36" y="286" fill="#7f1d1d" font-family="Arial" font-size="28" font-weight="700">Chili</text>
-    </svg>
-  `),
-
-  mango: encodeSvgDataUri(`
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 320">
-      <rect width="480" height="320" rx="28" fill="#fff7ed"/>
-      <path d="M200 130C260 120 300 160 285 205C270 245 215 245 195 210C178 180 175 145 200 130Z" fill="#f97316"/>
-      <path d="M245 122C250 108 262 102 272 104" stroke="#15803d" stroke-width="8" fill="none"/>
-      <text x="36" y="286" fill="#9a3412" font-family="Arial" font-size="28" font-weight="700">Mango</text>
-    </svg>
-  `),
-
-  banana: encodeSvgDataUri(`
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 320">
-      <rect width="480" height="320" rx="28" fill="#fefce8"/>
-      <path d="M180 210C190 140 260 100 310 120C300 160 280 180 250 195C220 210 195 215 180 210Z" fill="#facc15"/>
-      <path d="M180 210C175 218 178 226 188 226" stroke="#854d0e" stroke-width="6" fill="none"/>
-      <text x="36" y="286" fill="#854d0e" font-family="Arial" font-size="28" font-weight="700">Banana</text>
-    </svg>
-  `),
-
-  grapes: encodeSvgDataUri(`
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 320">
-      <rect width="480" height="320" rx="28" fill="#f5f3ff"/>
-      <circle cx="220" cy="140" r="20" fill="#7c3aed"/>
-      <circle cx="250" cy="150" r="20" fill="#7c3aed"/>
-      <circle cx="215" cy="175" r="20" fill="#7c3aed"/>
-      <circle cx="248" cy="185" r="20" fill="#7c3aed"/>
-      <circle cx="235" cy="205" r="20" fill="#7c3aed"/>
-      <path d="M235 118V100" stroke="#15803d" stroke-width="6"/>
-      <text x="36" y="286" fill="#4c1d95" font-family="Arial" font-size="28" font-weight="700">Grapes</text>
-    </svg>
-  `),
-
-  papaya: encodeSvgDataUri(`
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 320">
-      <rect width="480" height="320" rx="28" fill="#fff7ed"/>
-      <ellipse cx="240" cy="170" rx="55" ry="80" fill="#fb923c"/>
-      <path d="M240 90C250 78 262 76 270 80" stroke="#15803d" stroke-width="8" fill="none"/>
-      <text x="36" y="286" fill="#9a3412" font-family="Arial" font-size="28" font-weight="700">Papaya</text>
-    </svg>
-  `),
-};
-
-const getListingImage = (item) => {
-  const key = (item.cropName || '').trim().toLowerCase();
-  return (
-    CROP_IMAGES[key] ||
-    LISTING_IMAGES[item.category] ||
-    LISTING_IMAGES.Vegetables
-  );
+// Receiving UPI account for the manual-UPI flow. Configure it with
+// REACT_APP_UPI_ID (and REACT_APP_UPI_NAME) at build time. There is
+// deliberately no default: the old code showed a fake "your-upi-id@bank".
+const UPI_ID = process.env.REACT_APP_UPI_ID || '';
+const UPI_NAME = process.env.REACT_APP_UPI_NAME || 'AgriTrade';
+const upiLink = (transaction) => {
+  const amount = Number(transaction?.totalAmount || 0).toFixed(2);
+  return `upi://pay?pa=${encodeURIComponent(UPI_ID)}&pn=${encodeURIComponent(UPI_NAME)}&am=${amount}&cu=INR`;
 };
 
 const DashboardPage = ({ user, onLogout, onNavigate }) => {
@@ -403,14 +37,7 @@ const DashboardPage = ({ user, onLogout, onNavigate }) => {
   const [selectedCategory, setSelectedCategory] =
     useState('All Categories');
 
-  const [companionSearch, setCompanionSearch] = useState('');
-  const [companionCategory, setCompanionCategory] =
-    useState('All Crops');
-
   const [showUploadForm, setShowUploadForm] = useState(false);
-  const [selectedCompanionCrop, setSelectedCompanionCrop] =
-    useState(null);
-
   const [otpModal, setOtpModal] = useState({
     open: false,
     transactionId: null,
@@ -434,6 +61,7 @@ const DashboardPage = ({ user, onLogout, onNavigate }) => {
   });
 
   const [isLoading, setIsLoading] = useState(false);
+  const [loadError, setLoadError] = useState(null);
 
   const userId = user?.id || user?._id || '';
   const isFarmer = user?.role === 'Farmer';
@@ -469,6 +97,7 @@ const DashboardPage = ({ user, onLogout, onNavigate }) => {
     if (!userId) return;
 
     setIsLoading(true);
+    setLoadError(null);
 
     try {
       const [cropData, notifData] = await Promise.all([
@@ -502,11 +131,23 @@ const DashboardPage = ({ user, onLogout, onNavigate }) => {
         setTransactions(txnData.transactions || []);
       }
     } catch (error) {
-      window.alert(error.message);
+      // Inline banner with a retry button instead of a blocking alert().
+      setLoadError(error.message || 'Could not load your data.');
     } finally {
       setIsLoading(false);
     }
   };
+
+  // The analytics client fires this when the server says the token is no
+  // longer valid, so the user lands on the login page instead of seeing
+  // charts silently fail.
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      if (onLogout) onLogout();
+    };
+    window.addEventListener('agritrade:unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('agritrade:unauthorized', handleUnauthorized);
+  }, [onLogout]);
 
   useEffect(() => {
     loadData();
@@ -569,48 +210,6 @@ const DashboardPage = ({ user, onLogout, onNavigate }) => {
     );
   }, [isFarmer, transactions]);
 
-  const companionCategories = useMemo(
-    () => [
-      'All Crops',
-      ...new Set(COMPANION_GUIDE.map((item) => item.category)),
-    ],
-    []
-  );
-
-  const filteredCompanionGuide = useMemo(() => {
-    return COMPANION_GUIDE.filter((item) => {
-      const matchesSearch = item.crop
-        .toLowerCase()
-        .includes(companionSearch.toLowerCase());
-
-      const matchesCategory =
-        companionCategory === 'All Crops' ||
-        item.category === companionCategory;
-
-      return matchesSearch && matchesCategory;
-    });
-  }, [companionCategory, companionSearch]);
-
-  useEffect(() => {
-    if (
-      !selectedCompanionCrop &&
-      filteredCompanionGuide.length > 0
-    ) {
-      setSelectedCompanionCrop(filteredCompanionGuide[0]);
-    }
-
-    if (
-      selectedCompanionCrop &&
-      !filteredCompanionGuide.some(
-        (item) => item.crop === selectedCompanionCrop.crop
-      )
-    ) {
-      setSelectedCompanionCrop(
-        filteredCompanionGuide[0] || null
-      );
-    }
-  }, [filteredCompanionGuide, selectedCompanionCrop]);
-
   const farmerStats = [
     {
       label: 'Active Listings',
@@ -663,16 +262,22 @@ const DashboardPage = ({ user, onLogout, onNavigate }) => {
         return;
       }
 
-      const reader = new FileReader();
-
-      reader.onload = () => {
-        setUploadData((prev) => ({
-          ...prev,
-          imageUrl: reader.result,
-        }));
-      };
-
-      reader.readAsDataURL(file);
+      // Shrink to a few hundred KB in the browser (server limit: 400 KB).
+      prepareImageForUpload(file)
+        .then((dataUri) => {
+          setUploadData((prev) => ({
+            ...prev,
+            imageUrl: dataUri,
+          }));
+        })
+        .catch((err) => {
+          window.alert(err.message);
+          event.target.value = '';
+          setUploadData((prev) => ({
+            ...prev,
+            imageUrl: '',
+          }));
+        });
       return;
     }
 
@@ -713,12 +318,12 @@ const DashboardPage = ({ user, onLogout, onNavigate }) => {
             'India',
           harvestedDate:
             uploadData.harvestedDate ||
-            new Date().toLocaleDateString(),
+            todayIso(),
           basePrice,
           category: uploadData.category,
-          imageUrl:
-            uploadData.imageUrl ||
-            getListingImage(uploadData),
+          // Only a photo the farmer uploaded is sent. With none, the server
+          // looks up a real photo of the crop (or the card shows an icon).
+          imageUrl: uploadData.imageUrl || undefined,
         }),
       });
 
@@ -1183,6 +788,33 @@ const DashboardPage = ({ user, onLogout, onNavigate }) => {
               </p>
             )}
 
+            {loadError && (
+              <div
+                role="alert"
+                style={{
+                  background: '#fdecea',
+                  border: '1px solid #f5c6cb',
+                  color: '#8a1c1c',
+                  borderRadius: 10,
+                  padding: '10px 14px',
+                  margin: '12px 0',
+                  display: 'flex',
+                  gap: 12,
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <span>{loadError}</span>
+                <button
+                  type="button"
+                  className="small-btn"
+                  onClick={loadData}
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+
             {/* ================= STATS ================= */}
 
             {(activeTab === 'dashboard' ||
@@ -1425,13 +1057,9 @@ const DashboardPage = ({ user, onLogout, onNavigate }) => {
                       className="listing-card"
                     >
 
-                      <img
+                      <ListingImage
                         className="listing-image"
-                        src={
-                          item.imageUrl ||
-                          getListingImage(item)
-                        }
-                        alt={`${item.cropName} ${item.variety}`}
+                        item={item}
                       />
 
                       <div className="listing-body">
@@ -1708,249 +1336,7 @@ const DashboardPage = ({ user, onLogout, onNavigate }) => {
 
             {/* ================= COMPANION PLANTING ================= */}
 
-            {activeTab === 'companion' && (
-
-              <section className="companion-layout">
-
-                <div className="companion-list">
-
-                  <div className="companion-header">
-
-                    <div>
-                      <h2>Companion Planting</h2>
-
-                      <p>
-                        Pick a crop to see what grows well
-                        beside it and what should stay away.
-                      </p>
-                    </div>
-
-                    <div className="companion-count">
-                      {filteredCompanionGuide.length} crops
-                    </div>
-
-                  </div>
-
-                  <input
-                    type="text"
-                    placeholder="Search companion crops..."
-                    value={companionSearch}
-                    onChange={(e) =>
-                      setCompanionSearch(e.target.value)
-                    }
-                  />
-
-                  <div className="filter-chips">
-
-                    {companionCategories.map((category) => (
-
-                      <button
-                        key={category}
-                        type="button"
-                        className={`chip ${
-                          companionCategory === category
-                            ? 'active'
-                            : ''
-                        }`}
-                        onClick={() =>
-                          setCompanionCategory(category)
-                        }
-                      >
-                        {category}
-                      </button>
-
-                    ))}
-
-                  </div>
-
-                  <div className="companion-grid">
-
-                    {filteredCompanionGuide.map((item) => (
-
-                      <button
-                        key={item.crop}
-                        type="button"
-                        className={`companion-card ${
-                          selectedCompanionCrop?.crop ===
-                          item.crop
-                            ? 'selected'
-                            : ''
-                        }`}
-                        onClick={() =>
-                          setSelectedCompanionCrop(item)
-                        }
-                      >
-
-                        <div className="companion-card__top">
-
-                          <strong>{item.crop}</strong>
-
-                          <span>{item.category}</span>
-
-                        </div>
-
-                        <p>{item.season}</p>
-
-                        <div className="companion-tags">
-
-                          {item.bestWith
-                            .slice(0, 3)
-                            .map((pair) => (
-
-                              <span
-                                key={pair}
-                                className="tag good"
-                              >
-                                + {pair}
-                              </span>
-
-                            ))}
-
-                        </div>
-
-                      </button>
-
-                    ))}
-
-                    {filteredCompanionGuide.length === 0 && (
-                      <div className="empty-state">
-                        No companion planting matches found.
-                      </div>
-                    )}
-
-                  </div>
-
-                </div>
-
-                <div className="companion-detail">
-
-                  {selectedCompanionCrop ? (
-
-                    <>
-
-                      <div className="detail-hero">
-
-                        <div>
-
-                          <p className="detail-kicker">
-                            Companion planting guide
-                          </p>
-
-                          <h2>
-                            {selectedCompanionCrop.crop}
-                          </h2>
-
-                          <p className="detail-season">
-                            {selectedCompanionCrop.season} ·{' '}
-                            {selectedCompanionCrop.category}
-                          </p>
-
-                        </div>
-
-                        <div className="detail-stat">
-
-                          <span>Best matches</span>
-
-                          <strong>
-                            {
-                              selectedCompanionCrop.bestWith
-                                .length
-                            }
-                          </strong>
-
-                        </div>
-
-                      </div>
-
-                      <div className="detail-section">
-
-                        <h3>Best companions</h3>
-
-                        <div className="pill-row">
-
-                          {selectedCompanionCrop.bestWith.map(
-                            (item) => (
-                              <span
-                                key={item}
-                                className="pill good"
-                              >
-                                {item}
-                              </span>
-                            )
-                          )}
-
-                        </div>
-
-                      </div>
-
-                      <div className="detail-section">
-
-                        <h3>Avoid planting with</h3>
-
-                        <div className="pill-row">
-
-                          {selectedCompanionCrop.avoid.map(
-                            (item) => (
-                              <span
-                                key={item}
-                                className="pill avoid"
-                              >
-                                {item}
-                              </span>
-                            )
-                          )}
-
-                        </div>
-
-                      </div>
-
-                      <div className="detail-section">
-
-                        <h3>Why it works</h3>
-
-                        <ul className="detail-list">
-
-                          {selectedCompanionCrop.benefits.map(
-                            (benefit) => (
-                              <li key={benefit}>
-                                {benefit}
-                              </li>
-                            )
-                          )}
-
-                        </ul>
-
-                      </div>
-
-                      <div className="detail-tip">
-
-                        <strong>Field tip:</strong>{' '}
-                        {selectedCompanionCrop.tip}
-
-                      </div>
-
-                    </>
-
-                  ) : (
-
-                    <>
-
-                      <h2>Select a crop to get started</h2>
-
-                      <p>
-                        Choose a crop from the list to see its
-                        companion planting recommendations.
-                      </p>
-
-                    </>
-
-                  )}
-
-                </div>
-
-              </section>
-
-            )}
+            {activeTab === 'companion' && <CompanionPlanting />}
 
             {/* ================= NOTIFICATIONS ================= */}
 
@@ -2045,19 +1431,44 @@ const DashboardPage = ({ user, onLogout, onNavigate }) => {
               }}
             >
 
-              <img
-                src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=upi://pay?pa=your-upi-id@bank&pn=AgriMarket"
-                alt="UPI QR"
-                style={{
-                  width: 200,
-                  height: 200,
-                }}
-              />
+              {UPI_ID ? (
+                <>
+                  <img
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(upiLink(upiModal.transaction))}`}
+                    alt="UPI QR"
+                    style={{
+                      width: 200,
+                      height: 200,
+                    }}
+                  />
 
-              <div style={{ marginTop: 8 }}>
-                <strong>UPI ID:</strong>{' '}
-                your-upi-id@bank
-              </div>
+                  <div style={{ marginTop: 8 }}>
+                    <strong>UPI ID:</strong>{' '}
+                    {UPI_ID}
+                  </div>
+
+                  <a
+                    href={upiLink(upiModal.transaction)}
+                    style={{ display: 'inline-block', marginTop: 8 }}
+                  >
+                    Open in my UPI app
+                  </a>
+                </>
+              ) : (
+                <div
+                  style={{
+                    background: '#fff8e1',
+                    border: '1px solid #ffe082',
+                    borderRadius: 10,
+                    padding: 12,
+                    fontSize: 14,
+                  }}
+                >
+                  <strong>Demo mode:</strong> UPI payments are not set
+                  up for this deployment (no receiving UPI ID is
+                  configured), so there is no QR code to scan.
+                </div>
+              )}
 
               <div style={{ marginTop: 8 }}>
                 <strong>Amount:</strong> INR{' '}

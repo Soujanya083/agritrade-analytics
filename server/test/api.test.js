@@ -3,7 +3,7 @@
 // (no real database needed, no risk to your actual seeded data).
 // Run with: npm test
 
-const { MongoMemoryServer } = require('mongodb-memory-server');
+const { startTestMongo } = require('./helpers/testMongo');
 const mongoose = require('mongoose');
 const request = require('supertest');
 
@@ -11,8 +11,8 @@ let mongoServer;
 let app;
 
 beforeAll(async () => {
-  mongoServer = await MongoMemoryServer.create();
-  process.env.MONGO_URI = mongoServer.getUri();
+  mongoServer = await startTestMongo();
+  process.env.MONGO_URI = mongoServer.uri;
   process.env.NODE_ENV = 'development'; // so OTP is returned in responses for testing
   // eslint-disable-next-line global-require
   app = require('../server'); // requires AFTER setting MONGO_URI, so it connects to the in-memory DB

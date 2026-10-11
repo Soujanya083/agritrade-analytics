@@ -1,8 +1,10 @@
 import pandas as pd
 
 from app.services.data_loader import load_crops
+from app.utils.ttl_cache import ttl_cache
 
 
+@ttl_cache(seconds=300)
 def get_price_volatility() -> dict:
     """
     Analyze price volatility for each crop.

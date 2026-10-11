@@ -6,7 +6,10 @@ matches the pattern in test_mandi_snapshot.py.
 
 Run with: pytest tests/test_market_recommendation.py -v
 """
-import os
+import pytest
+import requests
+
+from app.services import mandi_comparison
 from app.services.market_recommendation import (
     get_market_recommendation,
     _transport_cost,
@@ -16,11 +19,25 @@ from app.services.market_recommendation import (
     ASSUMED_STORAGE_DAYS,
 )
 
-# fetch_mandi_prices short-circuits to an error unless credentials are
-# "configured" (even a dummy value forces it down the live-call-fails
-# -> cached-snapshot path, which is what these tests exercise).
-os.environ.setdefault("DATAGOVIN_API_KEY", "test-dummy-key")
-os.environ.setdefault("DATAGOVIN_RESOURCE_ID", "test-dummy-resource")
+
+@pytest.fixture(autouse=True)
+def _force_cached_snapshot_path(monkeypatch):
+    """
+    fetch_mandi_prices short-circuits to an error unless credentials are
+    "configured", and otherwise makes a live HTTP call. These tests want
+    the cached-snapshot path, so: set dummy credentials AND make the live
+    call fail deterministically. Previously the credentials were set at
+    import time, after the module under test had already read the
+    environment, so the tests only passed on a machine whose .env held
+    real keys (and then hit the real network).
+    """
+    monkeypatch.setenv("DATAGOVIN_API_KEY", "test-dummy-key")
+    monkeypatch.setenv("DATAGOVIN_RESOURCE_ID", "test-dummy-resource")
+
+    def _offline(*args, **kwargs):
+        raise requests.exceptions.ConnectionError("network disabled in tests")
+
+    monkeypatch.setattr(mandi_comparison.requests, "get", _offline)
 
 
 def test_transport_cost_same_state_is_cheaper():

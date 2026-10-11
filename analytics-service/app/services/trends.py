@@ -11,8 +11,10 @@ powers your dashboard charts.
 """
 import pandas as pd
 from app.services.data_loader import load_crops, load_bids, load_transactions
+from app.utils.ttl_cache import ttl_cache
 
 
+@ttl_cache(seconds=120)
 def price_trend(crop_name: str = None) -> list[dict]:
     """Average base price and current (winning) bid over time, optionally
     filtered to one crop. Powers the price-trend line chart."""
@@ -34,6 +36,7 @@ def price_trend(crop_name: str = None) -> list[dict]:
     return grouped.to_dict(orient="records")
 
 
+@ttl_cache(seconds=120)
 def best_selling_crops(top_n: int = 10) -> list[dict]:
     """Ranks crops by completed transaction volume and revenue."""
     tx = load_transactions()
@@ -51,6 +54,7 @@ def best_selling_crops(top_n: int = 10) -> list[dict]:
     return grouped.to_dict(orient="records")
 
 
+@ttl_cache(seconds=120)
 def region_wise_demand() -> list[dict]:
     """Bid counts per region — proxy for buyer demand by location."""
     crops = load_crops()
@@ -67,6 +71,7 @@ def region_wise_demand() -> list[dict]:
     return grouped.to_dict(orient="records")
 
 
+@ttl_cache(seconds=120)
 def farmer_revenue() -> list[dict]:
     """Total payout per farmer from completed transactions."""
     tx = load_transactions()
@@ -84,6 +89,7 @@ def farmer_revenue() -> list[dict]:
     return grouped.to_dict(orient="records")
 
 
+@ttl_cache(seconds=120)
 def buyer_purchasing_patterns() -> list[dict]:
     """Frequency and spend per buyer — basis for an RFM-style segmentation later."""
     tx = load_transactions()

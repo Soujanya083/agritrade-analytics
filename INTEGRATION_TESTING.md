@@ -1,8 +1,8 @@
 # Integration Testing Checklist
 
-Automated unit tests (analytics-service: 63 tests) and API tests
-(server: validators + signup/crops/bids) already cover individual
-pieces well. What's still worth doing before submission is a manual
+Automated tests (analytics-service: 89 original + 130 added, plus 36 HTTP-level
+API cases; server: 36 original + 53 added; frontend: 53 added) and CI
+(`.github/workflows/ci.yml`) cover the individual pieces well. What's still worth doing before submission is a manual
 pass through the **full chain** — frontend → backend → analytics
 service → database — since that's the one path nothing automated
 currently exercises end-to-end.
@@ -58,3 +58,18 @@ your report as a known limitation or fix it if there's time before
 submission. A checklist with 2-3 honestly-reported gaps is more
 credible to an examiner than a claim that everything works perfectly
 with no way to verify it.
+
+## Added after the audit: checks worth doing by hand
+
+- [ ] Call `/api/analytics/crops` with **no token** -> 401; with a farmer's token -> 200
+- [ ] Analytics page: summary card appears first; detail sections are collapsed except forecasts
+- [ ] Switch crop quickly several times -> the page ends on the last crop chosen (no stale data)
+- [ ] Pick a crop with no history -> a friendly "no data yet" note, not a broken page
+- [ ] List a crop with no photo -> with `PEXELS_API_KEY` set it gets a real photo of that crop
+      (e.g. Orange shows an orange, Carrot a carrot); without it, a labelled icon
+- [ ] Upload a 5 MB phone photo -> accepted (shrunk in the browser); upload a PDF -> rejected
+- [ ] Chatbot: "price of tomato" -> badge *From marketplace data*; "how to control aphids"
+      -> *General AI answer* (or the "not configured" note); "price of dragon fruit" -> asks which crop
+- [ ] Companion tab: search "marigold", pair-check Tomato + Potato (avoid), open Wheat and Rice
+- [ ] Kill the analytics service -> the Analytics page shows a clear error with Try again
+- [ ] Log in with an expired token -> you are sent to the login page

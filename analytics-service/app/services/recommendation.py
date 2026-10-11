@@ -22,8 +22,10 @@ score is computed.
 """
 import pandas as pd
 from app.services.data_loader import load_crops, load_bids
+from app.utils.ttl_cache import ttl_cache
 
 
+@ttl_cache(seconds=120)
 def recommend_crops(location: str = None, top_n: int = 5) -> list[dict]:
     crops = load_crops()
     bids = load_bids()

@@ -1,70 +1,24 @@
-# Getting Started with Create React App
+# AgriTrade frontend (React)
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Create React App project. See the [root README](../README.md) for architecture, environment variables and tests.
 
-## Available Scripts
+```bash
+npm install
+npm start                      # http://localhost:3000
+npm test -- --watchAll=false   # Jest + React Testing Library
+npm run build                  # CI=true also treats ESLint warnings as errors
+```
 
-In the project directory, you can run:
+Environment (`.env.local`): `REACT_APP_API_BASE_URL`, `REACT_APP_ANALYTICS_BASE_URL`, optional `REACT_APP_UPI_ID` / `REACT_APP_UPI_NAME`.
 
-### `npm start`
+Layout of the important parts:
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
-
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
-
-### `npm test`
-
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
-
-### `npm run build`
-
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
-
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
-
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
-
-### `npm run eject`
-
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
-
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
-
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
-
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
-
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
-
-### Code Splitting
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+| Path | What |
+|---|---|
+| `src/api/analyticsClient.js` | The only place that calls the analytics API: adds the JWT, maps HTTP status codes to friendly errors, shares in-flight identical requests |
+| `src/components/Dashboard/AnalyticsPanel.js` | Decision-first analytics page (summary → collapsible detail sections → assistant) |
+| `src/components/Dashboard/DecisionSummaryCard.js` | The "what this means for you" card |
+| `src/components/Dashboard/ChatbotWidget.js` | Assistant with a source badge on every answer |
+| `src/components/Companion/` + `src/data/companionPlanting.js` | Picture-first companion-planting tab; add a crop by adding one object to the data file |
+| `src/components/Dashboard/listingImages.js` | Listing photo with graceful icon fallback |
+| `src/utils/imageTools.js` | Shrinks uploaded photos in the browser; ISO date helper |

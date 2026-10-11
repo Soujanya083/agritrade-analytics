@@ -20,14 +20,14 @@
  */
 const request = require('supertest');
 const mongoose = require('mongoose');
-const { MongoMemoryServer } = require('mongodb-memory-server');
+const { startTestMongo } = require('./helpers/testMongo');
 
 let mongoServer;
 let app;
 
 beforeAll(async () => {
-  mongoServer = await MongoMemoryServer.create();
-  process.env.MONGO_URI = mongoServer.getUri();
+  mongoServer = await startTestMongo();
+  process.env.MONGO_URI = mongoServer.uri;
   process.env.NODE_ENV = 'development'; // so OTP is returned in signup responses
   // eslint-disable-next-line global-require
   app = require('../server'); // requires AFTER setting MONGO_URI, so its own

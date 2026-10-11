@@ -1,3 +1,9 @@
+> **Update after the audit:** this file predates several changes. The authoritative, current description of
+> authentication (JWT shared with the Node server), HTTP status codes, caching, the hybrid chatbot, privacy
+> pseudonymisation and test instructions is the [root README](../README.md); limitations are in
+> [docs/LIMITATIONS_AND_VIVA.md](../docs/LIMITATIONS_AND_VIVA.md). Where the two disagree, the root README is correct.
+> Install with `pip install -r requirements-dev.txt` and run tests with `pytest`.
+
 # 🌾 AgriTrade AI – Analytics & Machine Learning Service
 
 ## Intelligent Agricultural Market Analytics for Smarter Selling Decisions

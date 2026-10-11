@@ -35,12 +35,7 @@ MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/agribid")
 client = MongoClient(MONGO_URI)
 db = client.get_default_database()
 
-# Optional: if set, seeded crops get a real photo instead of falling back
-# to the frontend's hand-drawn icon. Sign up free at pexels.com/api,
-# no cost, ~instant approval. If unset, imageUrl is left blank and the
-# frontend's existing icon fallback kicks in exactly as before -
-# this is purely additive, nothing breaks without it.
-PEXELS_API_KEY = os.getenv("PEXELS_API_KEY")
+# (Crop photos are resolved by the Node server's backfill script, not here.)
 
 CROPS = [
     # Grains & pulses (kept under "Grains" - your app's dropdown only
@@ -175,41 +170,21 @@ hashed_pw = bcrypt.hashpw(b"password123", bcrypt.gensalt()).decode()
 
 def fetch_crop_images():
     """
-    One Pexels search per crop type (5 calls total, not per-listing),
-    so every seeded Tomato listing shares one real tomato photo, every
-    seeded Onion listing shares one real onion photo, etc. Well under
-    Pexels' free-tier limit (200/hour) even if you re-run this often.
-    Returns {} (i.e. no images) if PEXELS_API_KEY isn't set or a call
-    fails - seeding still works, listings just fall back to icons
-    exactly like before.
-    """
-    if not PEXELS_API_KEY:
-        print("PEXELS_API_KEY not set - skipping real photos, "
-              "seeded crops will use the existing icon fallback.")
-        return {}
+    Seeded listings are created WITHOUT an image on purpose.
 
-    images = {}
-    for crop in CROPS:
-        try:
-            resp = requests.get(
-                "https://api.pexels.com/v1/search",
-                headers={"Authorization": PEXELS_API_KEY},
-                params={"query": f"{crop} vegetable farm", "per_page": 1},
-                timeout=5,
-            )
-            resp.raise_for_status()
-            photos = resp.json().get("photos", [])
-            if photos:
-                # 'medium' is plenty for a listing card and keeps page
-                # weight down vs. the full-resolution original.
-                images[crop] = photos[0]["src"]["medium"]
-                print(f"  {crop}: got real photo from Pexels")
-            else:
-                print(f"  {crop}: no Pexels result, will use icon fallback")
-        except requests.RequestException as error:
-            print(f"  {crop}: Pexels request failed ({error}), "
-                  f"will use icon fallback")
-    return images
+    The old implementation searched Pexels for "<crop> vegetable farm" for
+    every one of the 50 crops - wrong for fruits and grains, and
+    meaningless for Indian names such as Brinjal / Jowar / Bajra - and took
+    the first hit blindly. Image resolution now lives in ONE place, the Node
+    server (server/services/cropImages.js), which maps crops to proper
+    English search terms and verifies the result. After seeding, run:
+
+        cd server && npm run backfill-images
+
+    (needs PEXELS_API_KEY). Listings without a photo show a labelled icon.
+    """
+    print("Skipping image lookup here - run `npm run backfill-images` in server/ afterwards.")
+    return {}
 
 
 def make_users():

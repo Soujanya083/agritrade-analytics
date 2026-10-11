@@ -28,7 +28,12 @@ datasets = {
     "users": load_users(),
 }
 
+# Defence in depth: the loaders already exclude secrets at the database, but
+# never let credential-like columns reach a CSV that gets shared or committed.
+SENSITIVE_COLUMNS = ["password", "verificationOtp", "otpCode", "otpExpiresAt", "imageUrl"]
+
 for name, df in datasets.items():
+    df = df.drop(columns=[c for c in SENSITIVE_COLUMNS if c in df.columns])
     path = os.path.join(OUTPUT_DIR, f"{name}.csv")
     df.to_csv(path, index=False)
     print(f"Exported {len(df)} rows -> {path}")

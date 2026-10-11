@@ -12,6 +12,30 @@ import pandas as pd
 import numpy as np
 
 from app.services.data_loader import load_crops
+from app.utils.ttl_cache import ttl_cache
+from app.utils.intervals import ols_prediction_interval
+
+# Longest horizon the API accepts. One forecast of this length is computed
+# per crop and every shorter request is a slice of it, so the dashboard
+# asking for 1, 7 and 14 days of the same crop costs ONE model fit, not
+# three. (Prophet's point forecast `yhat` for day k does not depend on how
+# many further days were requested.)
+MAX_FORECAST_DAYS = 90
+
+
+PRICE_BASIS_ASKING = "asking price (basePrice, fixed at listing time: no look-ahead)"
+PRICE_BASIS_FALLBACK = "highest bid so far (currentBid: contains later information - asking prices unavailable)"
+
+
+def _price_column(df: pd.DataFrame) -> str:
+    """basePrice when the data has usable asking prices, else currentBid."""
+    if "basePrice" in df.columns and pd.to_numeric(df["basePrice"], errors="coerce").gt(0).any():
+        return "basePrice"
+    return "currentBid"
+
+
+def price_basis(df: pd.DataFrame) -> str:
+    return PRICE_BASIS_ASKING if _price_column(df) == "basePrice" else PRICE_BASIS_FALLBACK
 
 
 def _prepare_series(crop_name: str) -> pd.DataFrame:
@@ -25,8 +49,17 @@ def _prepare_series(crop_name: str) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame()
 
+    # WHICH price? `currentBid` keeps rising AFTER a listing is created, so the
+    # value stored against a listing's creation date contains information from
+    # later days (look-ahead): a backtest that trains on it is quietly peeking.
+    # The asking price (`basePrice`) is fixed when the listing is created, so a
+    # series built from it only contains what was knowable on that day. It is
+    # used whenever it exists; `currentBid` is only a fallback for data that
+    # has no asking prices.
+    price_column = _price_column(df)
+
     # Validate required columns
-    required_columns = ["cropName", "currentBid", "createdAt"]
+    required_columns = ["cropName", price_column, "createdAt"]
 
     missing_columns = [
         column for column in required_columns
@@ -48,8 +81,8 @@ def _prepare_series(crop_name: str) -> pd.DataFrame:
         return pd.DataFrame()
 
     # Ensure correct data types
-    df["currentBid"] = pd.to_numeric(
-        df["currentBid"],
+    df[price_column] = pd.to_numeric(
+        df[price_column],
         errors="coerce"
     )
 
@@ -60,14 +93,14 @@ def _prepare_series(crop_name: str) -> pd.DataFrame:
 
     # Remove invalid records
     df = df.dropna(
-        subset=["cropName", "currentBid", "createdAt"]
+        subset=["cropName", price_column, "createdAt"]
     )
 
     if df.empty:
         return pd.DataFrame()
 
     # Prices cannot be negative
-    df = df[df["currentBid"] >= 0]
+    df = df[df[price_column] >= 0]
 
     if df.empty:
         return pd.DataFrame()
@@ -78,7 +111,7 @@ def _prepare_series(crop_name: str) -> pd.DataFrame:
     daily = (
         df.groupby("date")
         .agg(
-            y=("currentBid", "mean")
+            y=(price_column, "mean")
         )
         .reset_index()
         .rename(columns={"date": "ds"})
@@ -103,10 +136,28 @@ def predict_price(
             "error": "days_ahead must be at least 1."
         }
 
-    if days_ahead > 90:
+    if days_ahead > MAX_FORECAST_DAYS:
         return {
-            "error": "days_ahead cannot exceed 90 days."
+            "error": f"days_ahead cannot exceed {MAX_FORECAST_DAYS} days."
         }
+
+    full = _forecast_full_horizon(crop_name)
+
+    if "error" in full:
+        return full
+
+    sliced = {key: value for key, value in full.items() if key != "forecast"}
+    sliced["forecastDays"] = days_ahead
+    sliced["forecast"] = full["forecast"][:days_ahead]
+    return sliced
+
+
+@ttl_cache(seconds=600)
+def _forecast_full_horizon(crop_name: str) -> dict:
+    """Fits the model once and forecasts MAX_FORECAST_DAYS. Cached per crop
+    and invalidated when marketplace data changes (see ttl_cache)."""
+
+    days_ahead = MAX_FORECAST_DAYS
 
     series = _prepare_series(crop_name)
 
@@ -172,6 +223,7 @@ def predict_price(
 
         return {
             "cropName": crop_name,
+            "priceBasis": PRICE_BASIS_ASKING if _series_uses_asking(crop_name) else PRICE_BASIS_FALLBACK,
             "model": "Prophet",
             "historyPoints": len(series),
             "forecastDays": days_ahead,
@@ -182,7 +234,7 @@ def predict_price(
             )
         }
 
-    except Exception as error:
+    except Exception:
 
         # Graceful fallback if Prophet fails
         return _linear_fallback(
@@ -235,14 +287,13 @@ def _linear_fallback(
         len(series) + days_ahead
     )
 
-    predictions = trend_model(future_x)
+    # Proper OLS prediction interval (not a fake zero-width band).
+    predictions, lower, upper = ols_prediction_interval(y, future_x)
 
     # Safety floor: prices cannot be negative
-    predictions = np.clip(
-        predictions,
-        0,
-        None
-    )
+    predictions = np.clip(predictions, 0, None)
+    lower = np.clip(lower, 0, None)
+    upper = np.clip(upper, 0, None)
 
     last_date = series["ds"].max()
 
@@ -254,28 +305,24 @@ def _linear_fallback(
 
     forecast = []
 
-    for date, prediction in zip(
+    for date, prediction, low, high in zip(
         future_dates,
-        predictions
+        predictions,
+        lower,
+        upper
     ):
         forecast.append({
             "ds": date.strftime("%Y-%m-%d"),
             "yhat": round(float(prediction), 2),
-
-            # Keep response structure consistent
-            "yhat_lower": round(
-                float(prediction),
-                2
-            ),
-
-            "yhat_upper": round(
-                float(prediction),
-                2
-            )
+            # 90% prediction interval; with < 3 points it is the point itself
+            # flagged by `note`, never a claim of certainty
+            "yhat_lower": round(float(prediction if np.isnan(low) else low), 2),
+            "yhat_upper": round(float(prediction if np.isnan(high) else high), 2),
         })
 
     return {
         "cropName": crop_name,
+        "priceBasis": PRICE_BASIS_ASKING if _series_uses_asking(crop_name) else PRICE_BASIS_FALLBACK,
         "model": "Linear Regression Fallback",
         "historyPoints": len(series),
         "forecastDays": days_ahead,
@@ -285,3 +332,9 @@ def _linear_fallback(
             "Linear trend forecasting was used."
         )
     }
+
+def _series_uses_asking(crop_name: str) -> bool:
+    try:
+        return _price_column(load_crops()) == "basePrice"
+    except Exception:
+        return False

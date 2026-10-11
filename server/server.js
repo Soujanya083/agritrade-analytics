@@ -12,11 +12,25 @@ require('dotenv').config();
 const {
   isValidObjectId, isPositiveNumber, isNonEmptyString, isValidPhone, isValidLength, isReasonableDate, sanitizeString,
 } = require('./validators');
+const {
+  isProduction, resolveJwtSecret, buildCorsOptions, generateOtp, safeEqual, shouldExposeOtp,
+} = require('./security');
+const { normalizeImageInput } = require('./services/imageValidation');
+const { createCropImageResolver } = require('./services/cropImages');
 
 const app = express();
+
+// Behind Render/Heroku-style proxies every request arrives from the proxy's
+// IP. Without this, express-rate-limit sees ONE client for the whole world,
+// so the 20-attempt login limit and 300-request limit were shared by ALL
+// users. TRUST_PROXY = number of proxy hops (default: 1 when deployed).
+app.set('trust proxy', Number(process.env.TRUST_PROXY ?? (isProduction() ? 1 : 0)));
+
 app.use(helmet());
-app.use(cors());
-app.use(express.json({ limit: '10mb' }));
+app.use(cors(buildCorsOptions()));
+// Photos are validated to <= 400 KB (see services/imageValidation.js), so
+// 1 MB is ample; the old 10 MB limit let one request bloat the database.
+app.use(express.json({ limit: '1mb' }));
 
 // General limiter: generous enough not to interfere with normal use
 // (dashboard polling, browsing listings), just stops a runaway
@@ -33,27 +47,32 @@ app.use(generalLimiter);
 // Tighter limiter specifically for login/signup - these are the routes
 // worth protecting against brute-force/credential-stuffing attempts,
 // so they get a stricter cap than everything else.
+// Defaults are the production values; the env overrides exist so automated
+// tests that create many accounts from one IP don't trip them.
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20,
+  max: Number(process.env.AUTH_RATE_LIMIT_MAX) || 20,
   standardHeaders: true,
   legacyHeaders: false,
   message: { message: 'Too many attempts, please try again in a few minutes.' },
 });
 
-// JWT_SECRET must be set in production; this fallback only exists so a
-// missing .env doesn't crash local dev. Never rely on the fallback for
-// anything deployed.
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-secret-do-not-use-in-production';
-if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
-  console.error('JWT_SECRET is not set. Refusing to start in production without it.');
+// JWT_SECRET must be set when deployed (NODE_ENV=production or on Render);
+// the dev fallback only exists so a missing .env doesn't crash local dev.
+let JWT_SECRET;
+try {
+  const resolved = resolveJwtSecret();
+  JWT_SECRET = resolved.secret;
+  if (resolved.usingFallback) console.warn('WARNING: JWT_SECRET not set - using the public dev-only secret. Never deploy like this.');
+} catch (err) {
+  console.error(err.message);
   process.exit(1);
 }
 
 const signToken = (user) => jwt.sign(
   { id: user._id.toString(), role: user.role },
   JWT_SECRET,
-  { expiresIn: '7d' },
+  { expiresIn: '7d', algorithm: 'HS256' },
 );
 
 // Verifies the Bearer token and attaches { id, role } to req.user.
@@ -64,7 +83,7 @@ const authenticateToken = (req, res, next) => {
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
   if (!token) return res.status(401).json({ message: 'Authentication token required' });
   try {
-    req.user = jwt.verify(token, JWT_SECRET);
+    req.user = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] });
     return next();
   } catch (err) {
     return res.status(401).json({ message: 'Invalid or expired token' });
@@ -81,49 +100,14 @@ const requireOwnerOf = (paramName) => (req, res, next) => {
   return next();
 };
 
-// --- Real crop photos (Pexels), used when a farmer doesn't upload their own ---
-// Unlike a hardcoded icon/image list, this works for ANY crop name a
-// farmer types in - the marketplace accepts free text, not a fixed list.
-// In-memory cache keyed by lowercased crop name so repeated listings of
-// the same crop (very common - many farmers list "Tomato") only hit the
-// Pexels API once per crop name for the life of the server process.
-const PEXELS_API_KEY = process.env.PEXELS_API_KEY;
-const cropImageCache = new Map();
-
-const resolveCropImage = async (cropName) => {
-  if (!PEXELS_API_KEY) return null;
-  const key = String(cropName || '').trim().toLowerCase();
-  if (!key) return null;
-  if (cropImageCache.has(key)) return cropImageCache.get(key);
-
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 4000);
-    const response = await fetch(
-      `https://api.pexels.com/v1/search?query=${encodeURIComponent(`${cropName} vegetable farm`)}&per_page=1`,
-      { headers: { Authorization: PEXELS_API_KEY }, signal: controller.signal },
-    );
-    clearTimeout(timeout);
-    if (!response.ok) {
-      cropImageCache.set(key, null);
-      return null;
-    }
-    const data = await response.json();
-    const url = data?.photos?.[0]?.src?.medium || null;
-    cropImageCache.set(key, url);
-    return url;
-  } catch (error) {
-    // Pexels being slow/down should never block listing a crop -
-    // just fall back to the frontend's icon, same as if imageUrl were null.
-    cropImageCache.set(key, null);
-    return null;
-  }
-};
+// --- Real crop photos (Pexels), used when a farmer doesn't upload their own.
+// All the logic (category-aware queries, relevance checks, caching) lives in
+// services/cropImages.js. Returns { url, credit, sourceUrl } or null.
+const { resolveCropImage } = createCropImageResolver({ apiKey: process.env.PEXELS_API_KEY });
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const isEmailValid = (email) => EMAIL_REGEX.test(String(email || '').toLowerCase().trim());
 const isStrongPassword = (password) => typeof password === 'string' && password.length >= 8;
-const generateOtp = () => String(Math.floor(100000 + Math.random() * 900000));
 const otpExpiryMinutes = 10;
 
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/agribid';
@@ -162,6 +146,7 @@ const cropSchema = new mongoose.Schema({
   currentBid: { type: Number, required: true },
   category: { type: String, default: 'Grains' },
   imageUrl: { type: String, default: null },
+  imageCredit: { type: String, default: null },
   status: { type: String, enum: ['open', 'deal_done', 'completed'], default: 'open' },
   acceptedBidId: { type: mongoose.Schema.Types.ObjectId, ref: 'Bid', default: null },
 }, { timestamps: true });
@@ -203,6 +188,17 @@ const notificationSchema = new mongoose.Schema({
   isRead: { type: Boolean, default: false },
 }, { timestamps: true });
 
+// Indexes for the queries the API and the analytics service actually run.
+cropSchema.index({ farmerId: 1, createdAt: -1 });
+cropSchema.index({ status: 1, createdAt: -1 });
+cropSchema.index({ cropName: 1 });
+bidSchema.index({ cropId: 1, status: 1 });
+bidSchema.index({ buyerId: 1, createdAt: -1 });
+transactionSchema.index({ farmerId: 1, createdAt: -1 });
+transactionSchema.index({ buyerId: 1, createdAt: -1 });
+transactionSchema.index({ cropId: 1 });
+notificationSchema.index({ userId: 1, createdAt: -1 });
+
 const User = mongoose.model('User', userSchema);
 const Crop = mongoose.model('Crop', cropSchema);
 const Bid = mongoose.model('Bid', bidSchema);
@@ -211,6 +207,13 @@ const Notification = mongoose.model('Notification', notificationSchema);
 
 const createNotification = async (userId, message, type = 'info') => {
   await Notification.create({ userId, message, type, isRead: false });
+};
+
+// Logs the real error server-side, tells the client nothing about internals
+// (the original returned the raw error object: stack-like detail, DB messages).
+const sendServerError = (res, error, message) => {
+  console.error(`${message}:`, error);
+  return res.status(500).json({ message });
 };
 
 app.get('/', (req, res) => res.send('Agri-Bid Backend is Online! '));
@@ -284,15 +287,14 @@ app.post('/api/signup', authLimiter, async (req, res) => {
         deliveryAddress: newUser.deliveryAddress,
       },
       otpSent: true,
-      // No real email/SMS provider is wired up - this app doesn't have
-      // one, so without this, an account could never actually be
-      // verified outside local dev. Always returning it (not just in
-      // development) is a deliberate demo-mode choice, not an oversight -
-      // a real deployment would replace this with an actual send.
-      otp: otpCode,
+      // DEMO MODE: no email/SMS provider is wired up, so the OTP is returned
+      // in the response (otherwise no account could ever be verified). This
+      // means OTP verification proves nothing yet. Set
+      // EXPOSE_OTP_IN_RESPONSE=false once a real sender is plugged in.
+      ...(shouldExposeOtp() ? { otp: otpCode, otpDelivery: 'demo-mode-in-response' } : {}),
     });
   } catch (error) {
-    res.status(500).json({ message: 'Server Error', error });
+    return sendServerError(res, error, 'Server Error');
   }
 });
 
@@ -324,11 +326,11 @@ app.post('/api/verify-otp', authLimiter, async (req, res) => {
 
     res.status(200).json({ message: 'Account verified successfully' });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to verify OTP', error });
+    return sendServerError(res, error, 'Failed to verify OTP');
   }
 });
 
-app.post('/api/resend-otp', async (req, res) => {
+app.post('/api/resend-otp', authLimiter, async (req, res) => {
   try {
     const { email } = req.body;
     const normalizedEmail = String(email || '').toLowerCase().trim();
@@ -347,10 +349,10 @@ app.post('/api/resend-otp', async (req, res) => {
     res.status(200).json({
       message: 'OTP resent successfully',
       // Same demo-mode reasoning as the signup endpoint above.
-      otp: otpCode,
+      ...(shouldExposeOtp() ? { otp: otpCode, otpDelivery: 'demo-mode-in-response' } : {}),
     });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to resend OTP', error });
+    return sendServerError(res, error, 'Failed to resend OTP');
   }
 });
 
@@ -375,9 +377,6 @@ app.post('/api/login', authLimiter, async (req, res) => {
     if (user.phone.trim() !== String(phone).trim()) {
       return res.status(400).json({ message: 'Phone number does not match our records' });
     }
-    if (!user.isVerified) {
-      return res.status(403).json({ message: 'Account not verified. Please confirm OTP first.' });
-    }
 
     let isMatch = false;
     if (user.password && user.password.startsWith('$2')) {
@@ -390,6 +389,10 @@ app.post('/api/login', authLimiter, async (req, res) => {
       }
     }
     if (!isMatch) return res.status(400).json({ message: 'Invalid password' });
+    // Only reveal "not verified" to someone who proved they know the password.
+    if (!user.isVerified) {
+      return res.status(403).json({ message: 'Account not verified. Please confirm OTP first.' });
+    }
 
     const token = signToken(user);
 
@@ -408,6 +411,8 @@ app.post('/api/login', authLimiter, async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 });
+
+const CROP_CATEGORIES = ['Grains', 'Vegetables', 'Fruits'];
 
 app.post('/api/crops', authenticateToken, async (req, res) => {
   try {
@@ -440,10 +445,19 @@ app.post('/api/crops', authenticateToken, async (req, res) => {
       return res.status(400).json({ message: 'Harvested date must be a valid, reasonable date' });
     }
 
-    // If the farmer uploaded their own photo, always prefer it. Only
-    // fetch a stock photo as a fallback so a real farmer's own crop
-    // photo is never overwritten by a generic one.
-    const resolvedImageUrl = imageUrl || await resolveCropImage(cropName);
+    const normalizedCategory = CROP_CATEGORIES.includes(category) ? category : 'Grains';
+
+    // A farmer's own photo always wins (validated: https URL or small
+    // PNG/JPEG/WebP). Legacy SVG placeholders are ignored. Otherwise look up
+    // a stock photo of the actual crop; null means the UI shows its icon.
+    const image = normalizeImageInput(imageUrl);
+    if (!image.ok) return res.status(400).json({ message: image.message });
+    let resolvedImageUrl = image.imageUrl;
+    let imageCredit = null;
+    if (!resolvedImageUrl) {
+      const stock = await resolveCropImage(cropName, normalizedCategory);
+      if (stock) { resolvedImageUrl = stock.url; imageCredit = stock.credit; }
+    }
 
     const crop = await Crop.create({
       farmerId,
@@ -454,13 +468,14 @@ app.post('/api/crops', authenticateToken, async (req, res) => {
       harvestedDate,
       basePrice: Number(basePrice),
       currentBid: Number(basePrice),
-      category: category || 'Grains',
+      category: normalizedCategory,
       imageUrl: resolvedImageUrl || null,
+      imageCredit,
       status: 'open',
     });
     res.status(201).json({ message: 'Crop uploaded successfully', crop });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to upload crop', error });
+    return sendServerError(res, error, 'Failed to upload crop');
   }
 });
 
@@ -469,7 +484,7 @@ app.get('/api/crops', async (req, res) => {
     const crops = await Crop.find().sort({ createdAt: -1 }).lean();
     res.status(200).json({ crops });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to fetch crops', error });
+    return sendServerError(res, error, 'Failed to fetch crops');
   }
 });
 
@@ -526,7 +541,7 @@ app.post('/api/bids', authenticateToken, async (req, res) => {
     await createNotification(crop.farmerId, `New bid of INR ${Number(amount).toLocaleString()} received for ${crop.cropName}.`, 'bid');
     res.status(201).json({ message: 'Bid placed successfully', bid });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to place bid', error });
+    return sendServerError(res, error, 'Failed to place bid');
   }
 });
 
@@ -538,7 +553,7 @@ app.get('/api/bids/buyer/:buyerId', authenticateToken, requireOwnerOf('buyerId')
       .lean();
     res.status(200).json({ bids });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to fetch buyer bids', error });
+    return sendServerError(res, error, 'Failed to fetch buyer bids');
   }
 });
 
@@ -553,7 +568,7 @@ app.get('/api/bids/farmer/:farmerId', authenticateToken, requireOwnerOf('farmerI
       .lean();
     res.status(200).json({ bids });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to fetch farmer bids', error });
+    return sendServerError(res, error, 'Failed to fetch farmer bids');
   }
 });
 
@@ -564,14 +579,26 @@ app.post('/api/bids/:bidId/accept', authenticateToken, async (req, res) => {
     if (!isValidObjectId(bidId) || !isValidObjectId(farmerId)) {
       return res.status(400).json({ message: 'Invalid bid or farmer ID' });
     }
-    const bid = await Bid.findById(bidId).populate('cropId');
+    const bid = await Bid.findById(bidId);
     if (!bid) return res.status(404).json({ message: 'Bid not found' });
-    const crop = await Crop.findById(bid.cropId._id);
-    if (!crop) return res.status(404).json({ message: 'Crop not found' });
-    if (String(crop.farmerId) !== String(farmerId)) {
-      return res.status(403).json({ message: 'Not authorized to accept this bid' });
+    if (bid.status !== 'active') {
+      return res.status(400).json({ message: 'Only an active bid can be accepted' });
     }
-    if (crop.status !== 'open') {
+
+    // Claim the crop ATOMICALLY (open -> deal_done, owned by this farmer).
+    // The old read-check-then-write let two near-simultaneous accepts both
+    // pass the "is it still open?" check and create two transactions.
+    const crop = await Crop.findOneAndUpdate(
+      { _id: bid.cropId, farmerId, status: 'open' },
+      { $set: { status: 'deal_done', acceptedBidId: bid._id } },
+      { new: true },
+    );
+    if (!crop) {
+      const existing = await Crop.findById(bid.cropId);
+      if (!existing) return res.status(404).json({ message: 'Crop not found' });
+      if (String(existing.farmerId) !== String(farmerId)) {
+        return res.status(403).json({ message: 'Not authorized to accept this bid' });
+      }
       return res.status(400).json({ message: 'Crop is already in deal stage' });
     }
 
@@ -581,10 +608,6 @@ app.post('/api/bids/:bidId/accept', authenticateToken, async (req, res) => {
       { cropId: crop._id, _id: { $ne: bid._id }, status: 'active' },
       { $set: { status: 'outbid' } },
     );
-
-    crop.status = 'deal_done';
-    crop.acceptedBidId = bid._id;
-    await crop.save();
 
     const totalAmount = Number(bid.amount) * Number(crop.quantityKg);
     const platformFee = Number((totalAmount * 0.05).toFixed(2));
@@ -610,7 +633,7 @@ app.post('/api/bids/:bidId/accept', authenticateToken, async (req, res) => {
 
     res.status(200).json({ message: 'Bid accepted and deal marked done', transaction });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to accept bid', error });
+    return sendServerError(res, error, 'Failed to accept bid');
   }
 });
 
@@ -669,7 +692,7 @@ app.post('/api/transactions/:transactionId/create-order', authenticateToken, asy
       keyId: process.env.RAZORPAY_KEY_ID,
     });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to create payment order', error: error.message });
+    return sendServerError(res, error, 'Failed to create payment order');
   }
 });
 
@@ -691,7 +714,7 @@ app.post('/api/transactions/:transactionId/confirm-upi-payment', authenticateTok
     }
     // Mark as paid (manual trust-based)
     transaction.status = 'payment_confirmed';
-    transaction.paymentDate = new Date().toLocaleDateString();
+    transaction.paymentDate = new Date().toISOString().slice(0, 10);
     await transaction.save();
 
     await createNotification(
@@ -706,7 +729,7 @@ app.post('/api/transactions/:transactionId/confirm-upi-payment', authenticateTok
     );
     res.status(200).json({ message: 'Payment marked as completed.' });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to confirm UPI payment', error: error.message });
+    return sendServerError(res, error, 'Failed to confirm UPI payment');
   }
 });
 
@@ -735,17 +758,22 @@ app.post('/api/transactions/:transactionId/verify-payment', authenticateToken, a
       return res.status(400).json({ message: 'Order mismatch' });
     }
 
+    // Without the secret an HMAC keyed with '' is something an attacker can
+    // compute themselves, so refuse to verify at all rather than "verify".
+    if (!process.env.RAZORPAY_KEY_SECRET) {
+      return res.status(503).json({ message: 'Online payments are not configured' });
+    }
     const digest = crypto
-      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET || '')
+      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
       .update(`${razorpayOrderId}|${razorpayPaymentId}`)
       .digest('hex');
 
-    if (!digest || digest !== razorpaySignature) {
+    if (!safeEqual(digest, razorpaySignature)) {
       return res.status(400).json({ message: 'Invalid payment signature' });
     }
 
     transaction.status = 'payment_confirmed';
-    transaction.paymentDate = new Date().toLocaleDateString();
+    transaction.paymentDate = new Date().toISOString().slice(0, 10);
     transaction.razorpayPaymentId = razorpayPaymentId;
     await transaction.save();
 
@@ -761,7 +789,7 @@ app.post('/api/transactions/:transactionId/verify-payment', authenticateToken, a
     );
     res.status(200).json({ message: 'Payment verified successfully.' });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to verify payment', error: error.message });
+    return sendServerError(res, error, 'Failed to verify payment');
   }
 });
 
@@ -780,9 +808,9 @@ app.post('/api/transactions/:transactionId/mark-dispatch', authenticateToken, as
     if (transaction.status !== 'payment_confirmed') {
       return res.status(400).json({ message: 'Dispatch allowed only after payment confirmation' });
     }
-    const otpCode = String(Math.floor(100000 + Math.random() * 900000));
+    const otpCode = generateOtp();
     transaction.status = 'dispatched';
-    transaction.dispatchedDate = new Date().toLocaleDateString();
+    transaction.dispatchedDate = new Date().toISOString().slice(0, 10);
     transaction.otpCode = otpCode;
     transaction.otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
     await transaction.save();
@@ -799,11 +827,23 @@ app.post('/api/transactions/:transactionId/mark-dispatch', authenticateToken, as
     );
     res.status(200).json({ message: 'Dispatch marked. OTP generated for buyer confirmation.' });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to mark dispatch', error });
+    return sendServerError(res, error, 'Failed to mark dispatch');
   }
 });
 
-app.post('/api/transactions/:transactionId/complete-delivery', authenticateToken, async (req, res) => {
+// A 6-digit OTP has only 1,000,000 values; without a per-user cap an
+// authenticated buyer could simply try them all.
+const deliveryOtpLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  keyGenerator: (req) => `otp:${req.user?.id || req.ip}`,
+  validate: { keyGeneratorIpFallback: false },
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many OTP attempts, please try again later.' },
+});
+
+app.post('/api/transactions/:transactionId/complete-delivery', authenticateToken, deliveryOtpLimiter, async (req, res) => {
   try {
     const { otpCode } = req.body;
     const buyerId = req.user.id;
@@ -822,7 +862,7 @@ app.post('/api/transactions/:transactionId/complete-delivery', authenticateToken
     if (transaction.status !== 'dispatched') {
       return res.status(400).json({ message: 'Delivery confirmation is available only after dispatch' });
     }
-    if (!transaction.otpCode || transaction.otpCode !== String(otpCode)) {
+    if (!transaction.otpCode || !safeEqual(transaction.otpCode, String(otpCode).trim())) {
       return res.status(400).json({ message: 'Invalid OTP' });
     }
     if (transaction.otpExpiresAt && transaction.otpExpiresAt < new Date()) {
@@ -830,7 +870,7 @@ app.post('/api/transactions/:transactionId/complete-delivery', authenticateToken
     }
 
     transaction.status = 'delivery_completed';
-    transaction.completedDate = new Date().toLocaleDateString();
+    transaction.completedDate = new Date().toISOString().slice(0, 10);
     transaction.otpCode = null;
     transaction.otpExpiresAt = null;
     await transaction.save();
@@ -855,7 +895,7 @@ app.post('/api/transactions/:transactionId/complete-delivery', authenticateToken
       platformFee: transaction.platformFee,
     });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to complete delivery', error });
+    return sendServerError(res, error, 'Failed to complete delivery');
   }
 });
 
@@ -871,7 +911,7 @@ app.get('/api/transactions/user/:userId', authenticateToken, requireOwnerOf('use
       .lean();
     res.status(200).json({ transactions });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to fetch transactions', error });
+    return sendServerError(res, error, 'Failed to fetch transactions');
   }
 });
 
@@ -886,7 +926,7 @@ app.get('/api/notifications/:userId', authenticateToken, requireOwnerOf('userId'
       unreadCount: notifications.filter((item) => !item.isRead).length,
     });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to fetch notifications', error });
+    return sendServerError(res, error, 'Failed to fetch notifications');
   }
 });
 
@@ -901,7 +941,7 @@ app.patch('/api/notifications/:notificationId/read', authenticateToken, async (r
     await notification.save();
     res.status(200).json({ message: 'Notification marked as read', notification });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to update notification', error });
+    return sendServerError(res, error, 'Failed to update notification');
   }
 });
 
@@ -910,7 +950,7 @@ app.patch('/api/notifications/user/:userId/read-all', authenticateToken, require
     await Notification.updateMany({ userId: req.params.userId, isRead: false }, { isRead: true });
     res.status(200).json({ message: 'All notifications marked as read' });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to mark all notifications as read', error });
+    return sendServerError(res, error, 'Failed to mark all notifications as read');
   }
 });
 

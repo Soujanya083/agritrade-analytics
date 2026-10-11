@@ -6,7 +6,9 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "test": "jest --runInBand"
+    "test": "jest --runInBand",
+    "backfill-images": "node scripts/backfillCropImages.js",
+    "test:unit": "jest --runInBand test/validators.test.js test/security.test.js test/imageValidation.test.js test/cropImages.test.js"
   },
   "keywords": [],
   "author": "",
@@ -27,5 +29,8 @@
     "jest": "^29.7.0",
     "supertest": "^6.3.4",
     "mongodb-memory-server": "^9.1.6"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

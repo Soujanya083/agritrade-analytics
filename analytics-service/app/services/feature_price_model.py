@@ -15,10 +15,14 @@ explainability.py - a missing optional dependency or a young dataset
 degrades gracefully instead of breaking the endpoint.
 """
 
+import threading
+
 import numpy as np
 import pandas as pd
 
 from app.services.data_loader import load_crops
+from app.utils.data_version import get_data_version
+from app.utils.ttl_cache import ttl_cache
 
 
 _FEATURE_COLUMNS = [
@@ -105,6 +109,25 @@ def _train_model(feature_df: pd.DataFrame):
     return model
 
 
+# The full-data model used for SHAP explanations is expensive to fit (200
+# trees) and identical for every crop, so fit it once per data version and
+# share it across requests instead of retraining on every explanation call.
+_model_lock = threading.Lock()
+_model_memo: dict = {"version": None, "model": None}
+
+
+def _model_for_explanations(feature_df: pd.DataFrame):
+    version = get_data_version()
+    if version is None:  # caching disabled (tests): always fit fresh
+        return _train_model(feature_df)
+    with _model_lock:
+        if _model_memo["model"] is None or _model_memo["version"] != version:
+            _model_memo["model"] = _train_model(feature_df)
+            _model_memo["version"] = version
+        return _model_memo["model"]
+
+
+@ttl_cache(seconds=600)
 def train_and_evaluate_feature_model() -> dict:
     """
     Trains the feature-engineered RandomForest on a chronological
@@ -139,13 +162,32 @@ def train_and_evaluate_feature_model() -> dict:
 
     model = _train_model(train_df)
     predictions = model.predict(test_df[_FEATURE_COLUMNS])
-    metrics = _calculate_metrics(test_df["currentBid"].values, predictions)
+    actual = test_df["currentBid"].values
+    metrics = _calculate_metrics(actual, predictions)
+
+    # Honest yardsticks. A listing's currentBid STARTS at its basePrice and
+    # only moves up when bids arrive, so "just predict the asking price" is
+    # already a strong baseline here. A model that can't beat it is not
+    # adding information - and without this comparison a low RMSE would be
+    # indistinguishable from "the model copied basePrice".
+    baselines = {
+        "predict_asking_price": _calculate_metrics(actual, test_df["basePrice"].values),
+        "predict_previous_listing_price": _calculate_metrics(actual, test_df["lag_1"].values),
+    }
+    best_baseline_rmse = min(b["RMSE"] for b in baselines.values())
 
     return {
         "model": "RandomForestRegressor",
         "trainingListings": len(train_df),
         "testingListings": len(test_df),
         "metrics": metrics,
+        "baselines": baselines,
+        "beatsBestBaseline": bool(metrics["RMSE"] < best_baseline_rmse),
+        "baselineNote": (
+            "Baselines are 'predict the farmer's asking price' and 'predict the "
+            "previous listing's price'. The RandomForest is only useful if its "
+            "RMSE is lower than both."
+        ),
         "featureImportances": {
             _FEATURE_LABELS[col]: round(float(importance), 4)
             for col, importance in zip(_FEATURE_COLUMNS, model.feature_importances_)
@@ -153,6 +195,7 @@ def train_and_evaluate_feature_model() -> dict:
     }
 
 
+@ttl_cache(seconds=600)
 def explain_with_shap(crop_name: str, top_n: int = 5) -> dict:
     """
     Explains the most recent listing's predicted price for a crop
@@ -194,7 +237,7 @@ def explain_with_shap(crop_name: str, top_n: int = 5) -> dict:
     try:
         import shap
 
-        model = _train_model(feature_df)
+        model = _model_for_explanations(feature_df)
 
         latest_row = crop_rows.iloc[[-1]]
         X_target = latest_row[_FEATURE_COLUMNS]
@@ -226,6 +269,10 @@ def explain_with_shap(crop_name: str, top_n: int = 5) -> dict:
             "method": "SHAP (TreeExplainer on RandomForestRegressor)",
             "basePredictionValue": round(base_value, 2),
             "predictedPrice": round(predicted_price, 2),
+            # The model is fit on all listings including this one, so this
+            # explains an in-sample prediction (how the model reads this
+            # listing), not an out-of-sample forecast.
+            "explainsInSamplePrediction": True,
             "topFactors": contributions,
         }
 

@@ -3,14 +3,21 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 
+import { analytics, describeError } from '../../api/analyticsClient';
+import AnomalyBenchmarkCard from './AnomalyBenchmarkCard';
+
 // Same analytics service as AnalyticsPanel.js - this dashboard is a
 // different, research-facing VIEW of the same backend, not a new
 // service. It deliberately covers what AnalyticsPanel does not:
 // data quality, EDA (seasonal/correlation), market-wide crop scoring
 // with confidence labels, multi-method anomaly detection, and
 // decision backtesting.
-const ANALYTICS_BASE =
-  process.env.REACT_APP_ANALYTICS_BASE_URL || 'http://localhost:8000/api/analytics';
+
+// Each section loads independently. "Not enough data yet" now arrives as a
+// real 422/404 (it used to be {error} on HTTP 200), so turn a failure into
+// the {error: message} shape the sections already render, instead of letting
+// one failing section blank the whole page.
+const settle = (promise) => promise.catch((err) => ({ error: describeError(err) }));
 
 const cardStyle = {
   background: '#fff',
@@ -76,49 +83,34 @@ const MarketIntelligenceDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const fetchJson = async (url) => {
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`Request failed: ${response.status}`);
-    }
-    return response.json();
-  };
-
   useEffect(() => {
-    const loadMarketIntelligence = async () => {
+    const controller = new AbortController();
+    const { signal } = controller;
+    const load = async () => {
       setLoading(true);
       setError(null);
-      try {
-        const [
-          dataQualityRes,
-          edaRes,
-          cropScoreRes,
-          anomalyRes,
-          decisionRes,
-        ] = await Promise.all([
-          fetchJson(`${ANALYTICS_BASE}/data-quality`),
-          fetchJson(`${ANALYTICS_BASE}/eda-report`),
-          fetchJson(`${ANALYTICS_BASE}/crop-recommendation-score`),
-          fetchJson(`${ANALYTICS_BASE}/bid-anomalies`),
-          fetchJson(`${ANALYTICS_BASE}/decision/backtest`),
-        ]);
-
-        setDataQuality(dataQualityRes);
-        setEdaReport(edaRes);
-        setCropScores(cropScoreRes.recommendedCrops || []);
-        setAnomalies(anomalyRes);
-        setDecisionBacktest(decisionRes);
-      } catch (err) {
-        console.error('Failed to load market intelligence data:', err);
-        setError(
-          'Could not load market intelligence data. Make sure the analytics service is running on port 8000.'
-        );
-      } finally {
-        setLoading(false);
+      const [dataQualityRes, edaRes, cropScoreRes, anomalyRes, decisionRes] = await Promise.all([
+        settle(analytics.get('/data-quality', null, { signal })),
+        settle(analytics.get('/eda-report', null, { signal })),
+        settle(analytics.get('/crop-recommendation-score', null, { signal })),
+        settle(analytics.get('/bid-anomalies', null, { signal })),
+        settle(analytics.get('/decision/backtest', null, { signal })),
+      ]);
+      if (signal.aborted) return;
+      const all = [dataQualityRes, edaRes, cropScoreRes, anomalyRes, decisionRes];
+      // Only a total outage is a page-level error; partial gaps stay inside their sections.
+      if (all.every((r) => r && r.error)) {
+        setError(dataQualityRes.error);
       }
+      setDataQuality(dataQualityRes);
+      setEdaReport(edaRes);
+      setCropScores(cropScoreRes.recommendedCrops || []);
+      setAnomalies(anomalyRes);
+      setDecisionBacktest(decisionRes);
+      setLoading(false);
     };
-
-    loadMarketIntelligence();
+    load();
+    return () => controller.abort();
   }, []);
 
   const monthlySeasonalData = edaReport?.seasonalPatterns?.averagePriceByMonth
@@ -324,6 +316,7 @@ const MarketIntelligenceDashboard = () => {
         ) : (
           <p>{anomalies?.error || 'Not enough bidding data yet for anomaly detection.'}</p>
         )}
+              <AnomalyBenchmarkCard />
       </div>
 
       {/* ========================================== */}

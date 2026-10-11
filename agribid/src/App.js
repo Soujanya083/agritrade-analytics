@@ -55,7 +55,7 @@ function App() {
               <div className="cta-container">
                 <h2 className="cta-title">Ready to Get Started?</h2>
                 <p className="cta-text">
-                  Join thousands of farmers and buyers already trading on AgriMarket
+                  Create a free account to list crops, place bids and get price insights on AgriTrade
                 </p>
                 <button 
                   className="cta-button" 
