@@ -216,18 +216,17 @@ export default function CompanionPlanting() {
       </div>
 
       <div className="cp-layout-grid">
-        <div className="cp-grid" role="list">
+        <div className="cp-grid" role="group" aria-label="Crops">
           {crops.map((crop) => {
             const meta = CATEGORY_META[crop.category];
             return (
               <button
                 key={crop.id}
                 type="button"
-                role="listitem"
                 className={`cp-tile ${selected && selected.id === crop.id ? 'is-selected' : ''}`}
                 style={{ background: `linear-gradient(160deg, ${meta.from}, ${meta.to}33)` }}
                 onClick={() => choose(crop.id)}
-                aria-pressed={selected && selected.id === crop.id}
+                aria-pressed={Boolean(selected && selected.id === crop.id)}
               >
                 <span className="cp-tile__emoji" aria-hidden="true">{crop.emoji}</span>
                 <span className="cp-tile__name">{crop.name}</span>
