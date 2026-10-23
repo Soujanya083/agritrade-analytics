@@ -27,20 +27,37 @@ Download a public AGMARKNET history CSV (for example the "Agmarknet / Daily Whol
 
 Prices must be Rs per quintal (the AGMARKNET standard). Dates may be `dd/mm/yyyy` or ISO.
 
-## Step 2 - import it
-```bash
-cd analytics-service
-cp .env.example .env            # MONGO_URI must point at the same database
-python scripts/import_mandi_prices.py csv path/to/prices.csv
-python scripts/import_mandi_prices.py csv "data/*.csv"        # several files
-```
-It cleans as it streams (bad dates, non-positive prices, impossible min/max, duplicates) and prints exactly how many rows it dropped and why. Re-running is safe: duplicates are skipped.
+## Step 2 - import it (look first, then import only what you need)
+Always run from `analytics-service` with the virtual environment active (`.\venv\Scripts\Activate.ps1`).
 
-### After importing: see what you have
-```bash
+**2a. Look inside the file (writes nothing).** Shows which commodities, states and dates it contains and a rough database size:
+```powershell
+python scripts/import_mandi_prices.py scan "C:\data\prices.csv"
+```
+**2b. Dry run (writes nothing).** Shows how many rows would be kept after cleaning and filtering:
+```powershell
+python scripts/import_mandi_prices.py csv "C:\data\prices.csv" --commodity Onion Tomato Potato Wheat --dry-run
+```
+**2c. Import.** Same command without `--dry-run`. Names must match the file exactly (case does not matter): copy them from the `scan` output.
+```powershell
+python scripts/import_mandi_prices.py csv "C:\data\prices.csv" --commodity Onion Tomato Potato Wheat
+python scripts/import_mandi_prices.py csv "C:\data\prices.csv" --commodity Onion --state Maharashtra
+```
+**Why filter?** A free MongoDB Atlas cluster holds 512 MB. The `scan` size is only an estimate (about 500 bytes per row including indexes, not measured), but a multi-million-row national file can exceed the limit. Start with 3 to 5 crops that have the most rows.
+
+**2d. Which database does it write to?** To whatever `MONGO_URI` points at. The `.env` file in `analytics-service` points at your **local** database, which only your PC sees. To make the **live site** show real data, import into **Atlas** (the same database the Render analytics service uses):
+```powershell
+$env:MONGO_URI = "mongodb+srv://USER:PASSWORD@CLUSTER.mongodb.net/agribid?retryWrites=true&w=majority"
+python scripts/import_mandi_prices.py csv "C:\data\prices.csv" --commodity Onion Tomato Potato Wheat
+Remove-Item Env:MONGO_URI
+```
+Take the value from Render, analytics service, Environment (reveal it, copy it; never paste it into a chat or commit it). It must name the database (`/agribid`). In Atlas, Network Access must allow your current IP address.
+
+**2e. Check it worked.**
+```powershell
 python scripts/import_mandi_prices.py summary
 ```
-Lists each commodity with its days of history and what it supports, then prints the exact `generate_market_report.py` commands to run.
+Then open Analytics on your site and read the data-sources banner. It should report your imported record count and date range.
 
 ## Step 3 - keep it growing (daily)
 ```bash

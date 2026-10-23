@@ -111,7 +111,7 @@ Full methods, validation results and limits: [docs/DS_METHODOLOGY.md](docs/DS_ME
 
 ## Companion planting
 
-`agribid/src/data/companionPlanting.js` holds 31 crops (add one object to add a crop). The tab is picture-first: emoji tiles, a "can I plant these together?" checker, benefit icons, a drawn field-layout diagram, and tap-to-explain. Each crop is labelled *backed by field trials* or *traditional practice*, search matches local names and companions, and the UI says plainly when nothing is documented. It is general guidance, not agronomic advice.
+`agribid/src/data/` holds a 116-crop catalog (29 fruits, 30 grains and field crops, 31 vegetables, 26 leafy crops) with botanical families and a crop-specific icon for each (drawn SVG illustrations, or an emoji where an exact one exists). Pairings are made **only** where research supports them: each of the 15 verified pairings shows its status (supported, potentially suitable, unsuitable), benefits, risks, conditions and links to its sources. Where nothing reliable was found the tab says "insufficient evidence" and shows sourced general principles instead of guessing. The full validation log (what was kept, corrected and removed) is in [docs/COMPANION_EVIDENCE.md](docs/COMPANION_EVIDENCE.md); check the links with `node agribid/scripts/checkSourceLinks.mjs`.
 
 ## Tests
 

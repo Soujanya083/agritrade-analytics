@@ -1007,6 +1007,10 @@ const DashboardPage = ({ user, onLogout, onNavigate }) => {
                       <option value="Fruits">
                         Fruits
                       </option>
+
+                      <option value="Leafy">
+                        Leafy crops
+                      </option>
                     </select>
 
                     <button

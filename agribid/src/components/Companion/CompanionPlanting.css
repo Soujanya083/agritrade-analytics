@@ -92,3 +92,55 @@
   .cp-tile, .cp-friend, .cp-verdict { transition:none; animation:none; }
   .cp-tile:hover, .cp-friend:hover { transform:none; }
 }
+
+
+/* ---- evidence-based redesign additions ---- */
+.cp-evidence-note { background:#eff6ff; border:1px solid #bfdbfe; border-radius:12px; padding:10px 14px; font-size:.9rem; margin:0 0 16px; }
+.cp-icon { display:inline-block; flex:none; text-align:center; vertical-align:middle; }
+.cp-icon--letter { border-radius:50%; background:#e5e7eb; color:#374151; font-weight:700; }
+.cp-icon--emoji { font-family:"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif; }
+.cp-banner__icon { background:rgba(255,255,255,.65); border-radius:20px; padding:6px; box-sizing:content-box; }
+.cp-tile__family { font-size:.68rem; color:#6b7280; }
+.cp-tile__ok { position:absolute; top:6px; left:6px; font-size:.7rem; font-weight:700; background:#dcfce7; color:#166534; border-radius:999px; padding:2px 6px; }
+.cp-cat__n { margin-left:6px; font-size:.75rem; opacity:.75; }
+.cp-aliases { font-size:.85rem; opacity:.85; }
+.cp-badge { display:inline-flex; align-items:center; gap:4px; font-size:.78rem; font-weight:700; border-radius:999px; padding:3px 10px; border:1px solid; }
+.cp-badge--good { background:#dcfce7; border-color:#86efac; color:#166534; }
+.cp-badge--maybe { background:#fef9c3; border-color:#fde047; color:#854d0e; }
+.cp-badge--bad { background:#fee2e2; border-color:#fca5a5; color:#991b1b; }
+.cp-badge--unknown { background:#f3f4f6; border-color:#d1d5db; color:#374151; }
+.cp-verdict { display:block; }
+.cp-verdict--good { background:#f0fdf4; border-color:#86efac; }
+.cp-verdict--maybe { background:#fefce8; border-color:#fde047; }
+.cp-verdict--bad { background:#fef2f2; border-color:#fca5a5; }
+.cp-verdict--unknown { background:#f9fafb; border-color:#d1d5db; }
+.cp-verdict__top { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
+.cp-verdict__icons { display:flex; align-items:center; gap:8px; font-weight:700; }
+.cp-verdict__msg { margin:10px 0; line-height:1.45; }
+.cp-detail-body { padding:4px 18px 18px; }
+.cp-pair-card { border:1px solid var(--cp-line); border-left-width:5px; border-radius:14px; padding:12px 14px; margin:10px 0; background:#fff; }
+.cp-pair-card--good { border-left-color:#22c55e; } .cp-pair-card--maybe { border-left-color:#eab308; } .cp-pair-card--bad { border-left-color:#ef4444; }
+.cp-pair-card header { display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; align-items:center; }
+.cp-pair-card h4 { margin:0; font-size:1rem; }
+.cp-pair-summary { margin:8px 0; line-height:1.45; }
+.cp-bullets h5 { margin:8px 0 2px; font-size:.82rem; text-transform:uppercase; letter-spacing:.03em; }
+.cp-bullets ul { margin:0; padding-left:18px; font-size:.88rem; line-height:1.4; }
+.cp-bullets--good h5 { color:#166534; } .cp-bullets--bad h5 { color:#991b1b; } .cp-bullets--info h5 { color:#1e40af; }
+.cp-region, .cp-note, .cp-strength, .cp-season-note { font-size:.8rem; color:var(--cp-muted); margin:6px 0; }
+.cp-sources { margin-top:8px; font-size:.82rem; }
+.cp-sources summary { cursor:pointer; font-weight:600; color:#1d4ed8; }
+.cp-sources ul { padding-left:18px; margin:6px 0; }
+.cp-sources li { margin-bottom:4px; }
+.cp-sources a { color:#1d4ed8; word-break:break-word; }
+.cp-src-type { margin-left:6px; font-size:.7rem; background:#eef2ff; color:#3730a3; border-radius:999px; padding:1px 7px; white-space:nowrap; }
+.cp-src-type--secondary { background:#fef3c7; color:#92400e; }
+.cp-empty-verdict { background:#f9fafb; border:1px dashed #d1d5db; border-radius:14px; padding:12px 14px; margin:10px 0; }
+.cp-alt { background:#f8fafc; border:1px solid #e2e8f0; border-radius:14px; padding:12px 14px; margin:12px 0; }
+.cp-alt h4 { margin:0 0 6px; }
+.cp-alt-list { list-style:none; padding:0; margin:6px 0; display:flex; flex-direction:column; gap:6px; }
+.cp-principle { border-top:1px solid #e2e8f0; padding-top:8px; margin-top:8px; font-size:.9rem; }
+.cp-principle p { margin:4px 0; }
+@media (max-width: 480px) {
+  .cp-grid { grid-template-columns:repeat(auto-fill,minmax(96px,1fr)); }
+  .cp-detail-body { padding:4px 12px 14px; }
+}
