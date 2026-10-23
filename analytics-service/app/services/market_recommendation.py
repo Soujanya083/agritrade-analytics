@@ -23,6 +23,8 @@ simplifying assumption rather than presenting an estimate as measured
 fact. If real logistics-cost data becomes available later, only the
 constants below need to change - the ranking logic does not.
 """
+import pandas as pd
+
 from app.services.mandi_comparison import fetch_mandi_prices
 
 # ---- Disclosed assumptions (₹ per quintal unless noted) ----
@@ -30,6 +32,49 @@ TRANSPORT_COST_SAME_STATE = 80       # short-haul, within farmer's own state
 TRANSPORT_COST_OTHER_STATE = 250     # long-haul, crossing a state border
 STORAGE_COST_PER_QUINTAL_PER_DAY = 15
 ASSUMED_STORAGE_DAYS = 2             # typical gap between harvest and sale
+
+
+# Imported AGMARKNET history is preferred over the live API: it needs no API key and
+# is the same data the forecasts use. Only the most recent window is ranked.
+IMPORTED_WINDOW_DAYS = 30
+IMPORTED_MIN_QUOTES_PER_MARKET = 3
+IMPORTED_MIN_MARKETS = 3
+
+
+def _imported_market_records(crop_name: str):
+    """Recent per-market prices from the IMPORTED mandi history, shaped like API records.
+
+    Returns None when nothing usable has been imported (or the database is
+    unreachable), so the caller can fall back to the live API. Each market's
+    price is the median modal price (Rs/quintal) over the last 30 days of data.
+    """
+    try:
+        from app.services.market import real_market
+        from app.services.market.mandi_store import load_mandi_prices
+
+        names = [c["commodity"] for c in real_market.real_market_commodities()]
+        commodity = real_market.resolve_mandi_commodity(crop_name, names)
+        if not commodity:
+            return None
+        df = load_mandi_prices(commodity)
+        if df is None or df.empty:
+            return None
+        latest = df["date"].max()
+        recent = df[df["date"] > latest - pd.Timedelta(days=IMPORTED_WINDOW_DAYS)].copy()
+        recent["district"] = recent["district"].fillna("") if "district" in recent else ""
+        grouped = (recent.groupby(["state", "district", "market"])
+                   .agg(modal_price=("modalPrice", "median"), quotes=("modalPrice", "size"))
+                   .reset_index())
+        grouped = grouped[grouped["quotes"] >= IMPORTED_MIN_QUOTES_PER_MARKET]
+        if len(grouped) < IMPORTED_MIN_MARKETS:
+            return None
+        records = [{"state": r.state, "district": r.district or None, "market": r.market,
+                    "modal_price": float(r.modal_price)} for r in grouped.itertuples()]
+        return {"commodity": commodity, "records": records, "source": "imported_agmarknet",
+                "dataAsOf": pd.Timestamp(latest).strftime("%Y-%m-%d"),
+                "windowDays": IMPORTED_WINDOW_DAYS}
+    except Exception:  # DB not reachable etc. - fall back to the live API
+        return None
 
 
 def _transport_cost(record_state: str, farmer_state: str) -> tuple[float, str]:
@@ -48,7 +93,7 @@ def get_market_recommendation(
     (modal price minus transport cost minus storage cost), using real
     AGMARKNET records. Returns an error dict, unchanged, if no market
     data is available - never fabricates a market or a price."""
-    mandi_data = fetch_mandi_prices(crop_name, state=None, limit=25)
+    mandi_data = _imported_market_records(crop_name) or fetch_mandi_prices(crop_name, state=None, limit=25)
     if "error" in mandi_data:
         return mandi_data
 
@@ -111,4 +156,6 @@ def get_market_recommendation(
         "recommendedMarket": best,
         "rankedMarkets": ranked,
         "source": mandi_data.get("source"),
+        "dataAsOf": mandi_data.get("dataAsOf"),
+        "marketsCompared": len(ranked),
     }

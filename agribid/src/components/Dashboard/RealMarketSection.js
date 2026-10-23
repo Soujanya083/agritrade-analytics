@@ -195,7 +195,7 @@ export default function RealMarketSection({ crop, state }) {
                 ) : <p style={note}>{seasonality?.note}</p>}
 
                 <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', margin: '10px 0' }}>
-                  {overview.data.volatility?.available && <span style={{ background: '#f3f4f6', borderRadius: 999, padding: '4px 12px', fontSize: 13 }}>Volatility: <strong>{overview.data.volatility.level}</strong> ({overview.data.volatility.latestVolatilityPct}% / 30 days)</span>}
+                  {overview.data.volatility?.available && <span style={{ background: '#f3f4f6', borderRadius: 999, padding: '4px 12px', fontSize: 13 }}>{overview.data.volatility.levelReliable === false ? <>30-day price swing: <strong>{overview.data.volatility.latestVolatilityPct}%</strong> (too little history to call it high or low)</> : <>Volatility: <strong>{overview.data.volatility.level}</strong> vs its own history ({overview.data.volatility.latestVolatilityPct}% swing / 30 days)</>}</span>}
                   {overview.data.yearOnYear?.available && <span style={{ background: '#f3f4f6', borderRadius: 999, padding: '4px 12px', fontSize: 13 }}>vs last year: <strong>{overview.data.yearOnYear.changePct > 0 ? '+' : ''}{overview.data.yearOnYear.changePct}%</strong></span>}
                 </div>
 

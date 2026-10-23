@@ -86,7 +86,7 @@ export default function DecisionSummaryCard({ summary, loading, error, crop, qua
         <p style={{ fontSize: '12px', color: '#777', marginBottom: 4 }}>Limitations</p>
         <ul style={{ fontSize: '12px', color: '#666', paddingLeft: '20px', marginTop: 0 }}>
           {(summary.limitations || []).map((l) => <li key={l}>{l}</li>)}
-          {summary.mandiDataSource && <li>Mandi price source: {summary.mandiDataSource === 'cached_snapshot' ? 'a saved snapshot (no live API key configured), so it may be out of date' : summary.mandiDataSource}.</li>}
+          {summary.mandiDataSource && <li>Mandi price source: {summary.mandiDataSource === 'cached_snapshot' ? 'a saved snapshot (no live API key configured), so it may be out of date' : summary.mandiDataSource === 'imported_agmarknet' ? `imported AGMARKNET records${summary.mandiDataAsOf ? ` up to ${summary.mandiDataAsOf}` : ''} (median of the last 30 days per market)` : summary.mandiDataSource}.</li>}
         </ul>
         {(summary.warnings || []).length > 0 && (
           <p style={{ fontSize: '12px', color: '#8a6d00' }}>Some parts could not be calculated: {summary.warnings.join(' · ')}</p>

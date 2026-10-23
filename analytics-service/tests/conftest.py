@@ -35,6 +35,8 @@ def _isolated_environment(monkeypatch):
     from app.services import dashboard_summary
     monkeypatch.setattr(dashboard_summary, "_real_market_signal", lambda crop, state: None)
     monkeypatch.setattr(dashboard_summary, "_provenance", lambda: None)
+    from app.services import market_recommendation
+    monkeypatch.setattr(market_recommendation, "_imported_market_records", lambda crop: None)
     clear_cache()
     yield
     clear_cache()

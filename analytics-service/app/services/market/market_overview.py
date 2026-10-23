@@ -54,6 +54,9 @@ def volatility(series: pd.Series, window: int = 30) -> dict:
     latest = float(rolling.iloc[-1])
     percentile = float((rolling <= latest).mean() * 100)
     level = "high" if percentile >= 75 else "low" if percentile <= 25 else "normal"
+    # The level only compares today with this series' OWN history, so with under ~6 months
+    # of data there is too little history to call it high or low.
+    reliable = len(series) >= 180
     return {
         "available": True,
         "windowDays": window,
@@ -61,7 +64,10 @@ def volatility(series: pd.Series, window: int = 30) -> dict:
         "medianVolatilityPct": round(float(rolling.median()) * 100, 2),
         "percentileVsHistory": round(percentile, 1),
         "level": level,
-        "note": f"Prices are moving {level} relative to their own history over the last {window} days.",
+        "levelReliable": reliable,
+        "note": (f"Prices are moving {level} relative to their own history over the last {window} days."
+                 if reliable else
+                 f"Only {len(series)} days of history: too little to say whether recent swings are high or low for this crop."),
     }
 
 
