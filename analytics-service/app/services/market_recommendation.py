@@ -68,6 +68,12 @@ def _imported_market_records(crop_name: str):
         grouped = grouped[grouped["quotes"] >= IMPORTED_MIN_QUOTES_PER_MARKET]
         if len(grouped) < IMPORTED_MIN_MARKETS:
             return None
+        # Drop markets whose price is extreme next to the others (retail-style markets, entry errors):
+        # they would otherwise win "best market" without being a realistic place to sell wholesale.
+        from app.services.market.market_overview import within_price_band
+        grouped = grouped[within_price_band(grouped["modal_price"])]
+        if len(grouped) < IMPORTED_MIN_MARKETS:
+            return None
         records = [{"state": r.state, "district": r.district or None, "market": r.market,
                     "modal_price": float(r.modal_price)} for r in grouped.itertuples()]
         return {"commodity": commodity, "records": records, "source": "imported_agmarknet",

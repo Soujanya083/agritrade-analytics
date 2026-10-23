@@ -1,12 +1,12 @@
 # Onion (All India): real-market analysis
-*Generated 2026-10-22 from imported AGMARKNET data. Every figure below is produced by the project's analysis code.*
+*Generated 2026-10-23 from imported AGMARKNET data. Every figure below is produced by the project's analysis code.*
 
 ## 1. Data
 - 126 daily observations, 2025-02-06 to 2025-06-11, from 1043 markets.
 - Unit: INR per kg (AGMARKNET modal price per quintal / 100). Daily value = median across markets.
 - Forward-filled days (gaps of up to 3 days): 0. Cut at a longer gap: True.
 - Extreme one-day moves flagged (kept in the data): 0.
-- Days since last observation: 498.
+- Days since last observation: 499.
 
 ## 2. Is the price predictable at all?
 **mean reversion.** Prices show statistically significant mean reversion over multi-day horizons (variance ratio 0.305, 0.229). That means structure exists that a model could in principle exploit; whether the models tried here actually did is what the backtest above reports.

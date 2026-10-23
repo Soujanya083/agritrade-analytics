@@ -180,7 +180,7 @@ def extreme_moves(series: pd.Series, threshold: float = 8.0, keep: int = 3) -> d
 
 
 def build_series(df: pd.DataFrame, commodity: str, state: str | None = None, market: str | None = None,
-                 max_gap_days: int = 3) -> tuple[pd.Series, dict]:
+                 max_gap_days: int = 3, segment: str = "latest") -> tuple[pd.Series, dict]:
     """
     One daily price series (Rs/kg) for a commodity, optionally one state/market.
 
@@ -214,8 +214,16 @@ def build_series(df: pd.DataFrame, commodity: str, state: str | None = None, mar
     run_len = missing.groupby(run_id).transform("sum")
     long_gap = missing & (run_len > max_gap_days)
     if long_gap.any():
-        last_gap_end = long_gap[long_gap].index.max()
-        reindexed = reindexed.loc[last_gap_end + pd.Timedelta(days=1):]
+        if segment == "longest":
+            # Evaluation mode: keep the LONGEST unbroken stretch instead of the most recent one.
+            # Nothing is filled across the long gaps; the other stretches are simply not used.
+            seg_id = long_gap.ne(long_gap.shift()).cumsum()
+            usable = ~long_gap
+            best = max((g for _, g in reindexed[usable].groupby(seg_id[usable])), key=len)
+            reindexed = reindexed.loc[best.index.min():best.index.max()]
+        else:
+            last_gap_end = long_gap[long_gap].index.max()
+            reindexed = reindexed.loc[last_gap_end + pd.Timedelta(days=1):]
         missing = reindexed.isna()
 
     filled = reindexed.ffill(limit=max_gap_days).dropna()
@@ -231,6 +239,7 @@ def build_series(df: pd.DataFrame, commodity: str, state: str | None = None, mar
         "lastDate": filled.index.max().strftime("%Y-%m-%d") if len(filled) else None,
         "marketsContributing": int(sub["market"].nunique()),
         "cutAtLongGap": bool(long_gap.any()),
+        "segment": segment if long_gap.any() else "all",
         "unit": "INR per kg (AGMARKNET modal price per quintal / 100)",
     })
     return filled.astype(float), quality
