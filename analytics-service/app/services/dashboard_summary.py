@@ -371,6 +371,7 @@ def get_crop_decision_summary(crop_name: str, farmer_state: str = None, quantity
         "expectedNetProfitPerQuintal": net_per_quintal,
         "expectedTotalNetProfit": best.get("expectedTotalNetProfit"),
         "mandiDataSource": market_rec.get("source"),
+        "mandiDataAsOf": market_rec.get("dataAsOf"),
         "assumptions": market_rec["assumptions"],
     })
     if quantity_kg:

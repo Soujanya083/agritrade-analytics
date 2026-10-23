@@ -104,3 +104,16 @@ def test_market_spread_needs_at_least_three_markets():
     df = market_frame()
     assert mo.market_spread(df[df["market"].isin(["A", "B"])], "Onion")["available"] is False
     assert mo.market_spread(df, "Unicorn")["available"] is False
+
+
+def test_volatility_level_is_flagged_unreliable_on_short_history():
+    rng = np.random.default_rng(3)
+    short = S(20 * np.exp(np.cumsum(rng.normal(0, 0.03, 100))))
+    result = mo.volatility(short)
+    assert result["available"] and result["levelReliable"] is False
+    assert "too little" in result["note"]
+
+
+def test_volatility_level_is_reliable_with_enough_history():
+    rng = np.random.default_rng(4)
+    assert mo.volatility(S(20 * np.exp(np.cumsum(rng.normal(0, 0.01, 300)))))["levelReliable"] is True
