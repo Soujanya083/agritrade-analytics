@@ -32,3 +32,6 @@ __pycache__/
 
 # Generated analytics data
 analytics-service/eda_data/
+analytics-service/*.csv
+
+analytics-service/*.csv

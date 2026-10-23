@@ -80,10 +80,32 @@ describe('crop image handling', () => {
     expect((await listCrop(token, { imageUrl: 'javascript:alert(1)' })).statusCode).toBe(400);
   });
 
-  test('an unknown category falls back to Grains instead of being stored', async () => {
+  test('an unknown category is rejected with 400 instead of being silently stored as Grains', async () => {
     const { token } = await register('Farmer');
     const res = await listCrop(token, { category: '<b>hax</b>' });
+    expect(res.statusCode).toBe(400);
+    expect(res.body.message).toMatch(/Category must be one of/);
+  });
+
+  test('every supported category can be saved and read back unchanged (including Leafy)', async () => {
+    const { token } = await register('Farmer');
+    const cases = [['Onion', 'Vegetables'], ['Rice', 'Grains'], ['Mango', 'Fruits'], ['Spinach', 'Leafy'], ['Wheat', 'Grains'], ['Potato', 'Vegetables']];
+    for (const [cropName, category] of cases) {
+      const created = await listCrop(token, { cropName, category });
+      expect(created.statusCode).toBe(201);
+      expect(created.body.crop.category).toBe(category);
+    }
+    const listed = await request(app).get('/api/crops');
+    const byName = Object.fromEntries(listed.body.crops.map((c) => [c.cropName, c.category]));
+    cases.forEach(([cropName, category]) => expect(byName[cropName]).toBe(category));
+  });
+
+  test('a missing category defaults to Grains and messy spacing in the name is tidied', async () => {
+    const { token } = await register('Farmer');
+    const res = await listCrop(token, { cropName: '  Green   Chilli ', category: undefined });
+    expect(res.statusCode).toBe(201);
     expect(res.body.crop.category).toBe('Grains');
+    expect(res.body.crop.cropName).toBe('Green Chilli');
   });
 });
 

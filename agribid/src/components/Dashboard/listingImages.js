@@ -207,9 +207,11 @@ const CROP_IMAGES = {
 // load). It is a drawn icon, not a photo - the UI labels it as such.
 export const getFallbackIcon = (item) => {
   const key = (item.cropName || '').trim().toLowerCase();
+  // Leafy crops use the vegetable illustration until they get their own.
+  const category = item.category === 'Leafy' ? 'Vegetables' : item.category;
   return (
     CROP_IMAGES[key] ||
-    LISTING_IMAGES[item.category] ||
+    LISTING_IMAGES[category] ||
     LISTING_IMAGES.Vegetables
   );
 };

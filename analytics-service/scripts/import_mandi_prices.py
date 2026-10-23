@@ -1,8 +1,12 @@
 """
 Import REAL AGMARKNET mandi prices into MongoDB.
 
+  # 0. Look inside a file first (writes nothing): which crops/states/dates, rough database size
+  python scripts/import_mandi_prices.py scan path/to/prices.csv
+
   # 1. Years of history from a downloaded bulk CSV (see docs/REAL_DATA.md)
-  python scripts/import_mandi_prices.py csv path/to/prices.csv [more.csv ...]
+  python scripts/import_mandi_prices.py csv path/to/prices.csv --commodity Onion Tomato Potato --dry-run
+  python scripts/import_mandi_prices.py csv path/to/prices.csv --commodity Onion Tomato Potato
 
   # 2. Today's prices from the official API (run daily to keep history growing)
   DATAGOVIN_API_KEY=... python scripts/import_mandi_prices.py api
@@ -32,12 +36,21 @@ def main():
     csv_cmd = sub.add_parser("csv", help="bulk import from CSV file(s) or glob patterns")
     csv_cmd.add_argument("paths", nargs="+")
     csv_cmd.add_argument("--chunksize", type=int, default=100_000)
+    csv_cmd.add_argument("--commodity", nargs="+", help="only import these commodities (exact names; see `scan`)")
+    csv_cmd.add_argument("--state", nargs="+", help="only import these states")
+    csv_cmd.add_argument("--dry-run", action="store_true", help="read, clean and count, but write nothing")
+    scan_cmd = sub.add_parser("scan", help="read-only: list the commodities, states and dates a CSV holds")
+    scan_cmd.add_argument("path")
     api_cmd = sub.add_parser("api", help="pull current data from data.gov.in")
     api_cmd.add_argument("--state")
     api_cmd.add_argument("--commodity")
     api_cmd.add_argument("--max-records", type=int)
     sub.add_parser("summary", help="show which commodities have enough real history, and what to run next")
     args = parser.parse_args()
+
+    if args.mode == "scan":
+        print(json.dumps(mandi_import.scan_csv(args.path), indent=2))
+        return
 
     if args.mode == "summary":
         from app.services.market.real_market import real_market_commodities
@@ -54,16 +67,21 @@ def main():
             print(f'  python scripts/generate_market_report.py --commodity "{r["commodity"]}"')
         return
 
-    mandi_store.ensure_indexes()
-
     if args.mode == "csv":
         files = [f for pattern in args.paths for f in sorted(glob.glob(pattern))]
         if not files:
             sys.exit("No files matched.")
+        target = None if args.dry_run else mandi_prices_collection
+        if target is not None:
+            mandi_store.ensure_indexes()
         for path in files:
-            print(f"Importing {path} ...")
-            print(json.dumps(mandi_import.import_csv(mandi_prices_collection, path, args.chunksize), indent=2))
+            print(f"{'DRY RUN: reading' if args.dry_run else 'Importing'} {path} ...")
+            print(json.dumps(mandi_import.import_csv(target, path, args.chunksize, commodities=args.commodity, states=args.state), indent=2))
+        if args.dry_run:
+            print("\nDry run only: nothing was written. Re-run without --dry-run to import.")
+            return
     else:
+        mandi_store.ensure_indexes()
         key = os.getenv("DATAGOVIN_API_KEY")
         if not key:
             sys.exit("Set DATAGOVIN_API_KEY (free at data.gov.in -> My Account).")

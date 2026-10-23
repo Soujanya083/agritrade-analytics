@@ -412,7 +412,7 @@ app.post('/api/login', authLimiter, async (req, res) => {
   }
 });
 
-const CROP_CATEGORIES = ['Grains', 'Vegetables', 'Fruits'];
+const CROP_CATEGORIES = ['Grains', 'Vegetables', 'Fruits', 'Leafy'];
 
 app.post('/api/crops', authenticateToken, async (req, res) => {
   try {
@@ -445,7 +445,12 @@ app.post('/api/crops', authenticateToken, async (req, res) => {
       return res.status(400).json({ message: 'Harvested date must be a valid, reasonable date' });
     }
 
-    const normalizedCategory = CROP_CATEGORIES.includes(category) ? category : 'Grains';
+    // Previously an unknown category was silently stored as 'Grains', so a mistake (or a category the
+    // server did not know, such as leafy crops) would corrupt the data without any error.
+    if (category !== undefined && category !== null && category !== '' && !CROP_CATEGORIES.includes(category)) {
+      return res.status(400).json({ message: `Category must be one of: ${CROP_CATEGORIES.join(', ')}` });
+    }
+    const normalizedCategory = category || 'Grains';
 
     // A farmer's own photo always wins (validated: https URL or small
     // PNG/JPEG/WebP). Legacy SVG placeholders are ignored. Otherwise look up
@@ -461,7 +466,7 @@ app.post('/api/crops', authenticateToken, async (req, res) => {
 
     const crop = await Crop.create({
       farmerId,
-      cropName: sanitizeString(cropName),
+      cropName: sanitizeString(cropName).replace(/\s+/g, ' '),
       variety: sanitizeString(variety),
       quantityKg: Number(quantityKg),
       location: sanitizeString(location),

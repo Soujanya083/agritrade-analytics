@@ -52,27 +52,79 @@ def insert_clean_frame(collection, clean: pd.DataFrame) -> dict:
     return {"inserted": inserted, "duplicatesSkipped": duplicates}
 
 
-def import_csv(collection, path: str, chunksize: int = 100_000, progress: Callable[[str], None] = print) -> dict:
-    """Stream a (possibly very large) CSV into the collection, cleaning as it goes."""
-    totals = {"rowsRead": 0, "rowsKept": 0, "inserted": 0, "duplicatesSkipped": 0, "dropped": {}}
+def _filters(commodities, states):
+    """Lower-cased sets for exact, case-insensitive matching (None = no filter)."""
+    clean = lambda items: {i.strip().lower() for i in items if i and i.strip()} or None  # noqa: E731
+    return clean(commodities or []), clean(states or [])
+
+
+def _apply_filters(clean: pd.DataFrame, commodities, states) -> pd.DataFrame:
+    if commodities:
+        clean = clean[clean["commodity"].str.lower().isin(commodities)]
+    if states:
+        clean = clean[clean["state"].str.lower().isin(states)]
+    return clean
+
+
+def import_csv(collection, path: str, chunksize: int = 100_000, progress: Callable[[str], None] = print,
+               commodities=None, states=None) -> dict:
+    """
+    Stream a (possibly very large) CSV into the collection, cleaning as it goes.
+
+    commodities / states: only rows matching these (exact, case-insensitive) are kept. Use them: a free
+    MongoDB Atlas cluster holds only 512 MB, which a multi-million-row national file can exceed.
+    collection=None is a DRY RUN: everything is read, cleaned and counted but nothing is written.
+    """
+    wanted_c, wanted_s = _filters(commodities, states)
+    totals = {"rowsRead": 0, "rowsKept": 0, "filteredOut": 0, "inserted": 0, "duplicatesSkipped": 0,
+              "dropped": {}, "dryRun": collection is None}
     first = last = None
     for chunk in pd.read_csv(path, dtype=str, chunksize=chunksize, keep_default_na=False):
         clean, report = normalize_records(chunk)
         totals["rowsRead"] += report["rowsIn"]
-        totals["rowsKept"] += len(clean)
         for reason, n in report["dropped"].items():
             totals["dropped"][reason] = totals["dropped"].get(reason, 0) + n
+        before = len(clean)
+        clean = _apply_filters(clean, wanted_c, wanted_s)
+        totals["filteredOut"] += before - len(clean)
+        totals["rowsKept"] += len(clean)
         if len(clean):
-            outcome = insert_clean_frame(collection, clean)
-            totals["inserted"] += outcome["inserted"]
-            totals["duplicatesSkipped"] += outcome["duplicatesSkipped"]
+            if collection is not None:
+                outcome = insert_clean_frame(collection, clean)
+                totals["inserted"] += outcome["inserted"]
+                totals["duplicatesSkipped"] += outcome["duplicatesSkipped"]
             lo, hi = clean["date"].min(), clean["date"].max()
             first = lo if first is None else min(first, lo)
             last = hi if last is None else max(last, hi)
-        progress(f"  {path}: read {totals['rowsRead']:,} rows, inserted {totals['inserted']:,}")
+        progress(f"  {path}: read {totals['rowsRead']:,} rows, kept {totals['rowsKept']:,}, inserted {totals['inserted']:,}")
     totals["firstDate"] = None if first is None else first.strftime("%Y-%m-%d")
     totals["lastDate"] = None if last is None else last.strftime("%Y-%m-%d")
     return totals
+
+
+def scan_csv(path: str, chunksize: int = 100_000, top: int = 40) -> dict:
+    """Read-only look inside a file: which commodities / states / dates it holds (after cleaning)."""
+    commodities: dict = {}
+    states: dict = {}
+    rows = 0
+    first = last = None
+    for chunk in pd.read_csv(path, dtype=str, chunksize=chunksize, keep_default_na=False):
+        clean, _ = normalize_records(chunk)
+        rows += len(clean)
+        for name, n in clean["commodity"].value_counts().items():
+            commodities[name] = commodities.get(name, 0) + int(n)
+        for name, n in clean["state"].value_counts().items():
+            states[name] = states.get(name, 0) + int(n)
+        if len(clean):
+            lo, hi = clean["date"].min(), clean["date"].max()
+            first = lo if first is None else min(first, lo)
+            last = hi if last is None else max(last, hi)
+    ranked = lambda d: sorted(d.items(), key=lambda kv: -kv[1])[:top]  # noqa: E731
+    return {"cleanRows": rows, "firstDate": None if first is None else first.strftime("%Y-%m-%d"),
+            "lastDate": None if last is None else last.strftime("%Y-%m-%d"),
+            "commodityCount": len(commodities), "stateCount": len(states),
+            "commodities": ranked(commodities), "states": ranked(states),
+            "approxMongoMB": round(rows * 0.5 / 1000, 2)}  # ESTIMATE, not measured: assumes ~500 bytes per row incl. indexes
 
 
 def iter_api_records(fetch_page: Callable[[int, int], dict], page_size: int = 1000, max_records: int | None = None,
