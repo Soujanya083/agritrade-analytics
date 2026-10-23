@@ -117,3 +117,14 @@ def test_volatility_level_is_flagged_unreliable_on_short_history():
 def test_volatility_level_is_reliable_with_enough_history():
     rng = np.random.default_rng(4)
     assert mo.volatility(S(20 * np.exp(np.cumsum(rng.normal(0, 0.01, 300)))))["levelReliable"] is True
+
+
+def test_market_spread_leaves_out_extreme_markets():
+    df = market_frame()
+    extreme = df[df["market"] == "F"].copy()
+    extreme["market"] = "Z"
+    extreme["modalPricePerKg"] = 400.0   # absurdly high next to markets priced 15-40
+    result = mo.market_spread(pd.concat([df, extreme]), "Onion")
+    assert result["excludedOutlierMarkets"] == 1
+    assert all(r["market"] != "Z" for r in result["highest"])
+    assert "left out" in result["note"]

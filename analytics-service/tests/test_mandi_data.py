@@ -219,3 +219,18 @@ def test_far_future_dates_are_classified_as_future_on_every_pandas_version():
     clean, report = mandi_data.normalize_records([raw(), raw(Arrival_Date="01/01/2999", Market="M2")])
     assert len(clean) == 1
     assert report["dropped"] == {"date in the future": 1}
+
+
+
+def test_longest_segment_keeps_the_longest_unbroken_stretch():
+    days = pd.date_range("2024-01-01", "2024-12-31")
+    gap = (days >= "2024-03-01") & (days <= "2024-03-20")          # 20 missing days, early
+    gap2 = (days >= "2024-10-01") & (days <= "2024-10-10")         # 10 missing days, late
+    keep = days[~gap & ~gap2]
+    df = pd.DataFrame({"commodity": "Onion", "state": "K", "market": "M", "date": keep,
+                       "modalPricePerKg": 20.0, "modalPrice": 2000.0})
+    latest, q1 = mandi_data.build_series(df, "Onion", None, None)
+    longest, q2 = mandi_data.build_series(df, "Onion", None, None, segment="longest")
+    assert latest.index.min() == pd.Timestamp("2024-10-11")         # default: most recent stretch
+    assert longest.index.min() == pd.Timestamp("2024-03-21") and longest.index.max() == pd.Timestamp("2024-09-30")
+    assert len(longest) > len(latest) and q2["segment"] == "longest"

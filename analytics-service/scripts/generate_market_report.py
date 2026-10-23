@@ -27,16 +27,21 @@ def main():
     parser.add_argument("--market")
     parser.add_argument("--horizon", type=int, default=14)
     parser.add_argument("--out", default="reports")
+    parser.add_argument("--segment", choices=["latest", "longest"], default="latest",
+                        help="when the history has long gaps: use the most recent unbroken stretch (default) "
+                             "or the longest one (better for evaluating models)")
     args = parser.parse_args()
 
     df = mandi_store.load_mandi_prices(args.commodity, args.state, args.market)
     if df.empty:
         sys.exit(f"No imported history for '{args.commodity}'. See docs/REAL_DATA.md.")
-    series, quality = mandi_data.build_series(df, args.commodity, args.state, args.market)
+    series, quality = mandi_data.build_series(df, args.commodity, args.state, args.market, segment=args.segment)
     markdown, figures = build_report(series, df, args.commodity, args.state, quality, args.horizon)
 
     os.makedirs(args.out, exist_ok=True)
     stem = "_".join(p for p in (args.commodity, args.state) if p).replace(" ", "_").lower()
+    if args.segment == "longest":
+        stem += "_longest"
     for name, figure in figures.items():
         figure.savefig(os.path.join(args.out, name), dpi=140)
     path = os.path.join(args.out, f"{stem}_report.md")

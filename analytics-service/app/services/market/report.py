@@ -93,6 +93,8 @@ def build_report(series: pd.Series, df: pd.DataFrame, commodity: str, state: str
         f"from {quality['marketsContributing']} markets.",
         f"- Unit: {quality['unit']}. Daily value = median across markets.",
         f"- Forward-filled days (gaps of up to 3 days): {quality['forwardFilledDays']}. Cut at a longer gap: {quality['cutAtLongGap']}.",
+        *([f"- Series choice: the history has gaps longer than 3 days, so the **{quality.get('segment', 'latest')}** unbroken stretch is analysed; "
+           "nothing is filled across those gaps and the other stretches are not used."] if quality.get("cutAtLongGap") else []),
         f"- Extreme one-day moves flagged (kept in the data): {quality['extremeMoves']['count']}.",
         f"- Days since last observation: {quality['daysSinceLastObservation']}.",
         "",
@@ -109,8 +111,10 @@ def build_report(series: pd.Series, df: pd.DataFrame, commodity: str, state: str
         "| Day | Forecast (Rs/kg) | 90% interval |", "|---|---|---|",
         *[f"| {row['date']} | {row['point']} | {row['lower']} - {row['upper']} |" for row in lab["forecast"][:: max(1, horizon // 7)]],
         "",
-        f"Interval check: calibrated on the older half of the test points, the 90% interval covered the real price "
-        f"{lab['intervalCoverage']['empirical']} of the time on the newer half ({lab['intervalCoverage']['origins']} test points).",
+        (f"Interval check: calibrated on the older half of the test points, the 90% interval covered the real price "
+         f"{lab['intervalCoverage']['empirical']} of the time on the newer half ({lab['intervalCoverage']['origins']} test points)."
+         if lab['intervalCoverage'].get('empirical') is not None else
+         f"Interval check: not possible, only {lab['intervalCoverage'].get('origins', 0)} test points (too few to measure coverage)."),
         "",
         "## 4. Model comparison (rolling-origin backtest)",
         f"{lab['evaluation']['method']}; {lab['evaluation']['origins']} forecast origins over the last {lab['evaluation']['testWindowDays']} days.",

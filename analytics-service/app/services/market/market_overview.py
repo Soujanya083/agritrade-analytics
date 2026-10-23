@@ -83,6 +83,17 @@ def year_on_year(series: pd.Series, window: int = 14) -> dict:
             "changePct": round(float((now / then - 1) * 100), 1)}
 
 
+# Markets whose typical price is far from the all-market median are usually retail-style markets or
+# unit-entry mistakes (e.g. Rs 65/kg onion next to Rs 3/kg), not realistic places to sell wholesale.
+PRICE_BAND = (0.4, 2.0)   # keep markets priced between 0.4x and 2.0x of the median market
+
+
+def within_price_band(prices: pd.Series) -> pd.Series:
+    """Boolean mask of markets inside PRICE_BAND around the median market price."""
+    median = prices.median()
+    return (prices >= PRICE_BAND[0] * median) & (prices <= PRICE_BAND[1] * median)
+
+
 def market_spread(df: pd.DataFrame, commodity: str, state: str | None = None, days: int = 30,
                   min_observations: int = 5) -> dict:
     """
@@ -103,6 +114,11 @@ def market_spread(df: pd.DataFrame, commodity: str, state: str | None = None, da
     grouped = grouped[grouped["observations"] >= min_observations]
     if len(grouped) < 3:
         return {"available": False, "note": f"Fewer than 3 markets with {min_observations}+ recent quotes."}
+    inside = within_price_band(grouped["medianPerKg"])
+    excluded = int((~inside).sum())
+    grouped = grouped[inside]
+    if len(grouped) < 3:
+        return {"available": False, "note": "Fewer than 3 markets remain after excluding extreme prices."}
     grouped = grouped.sort_values("medianPerKg", ascending=False)
     median = float(grouped["medianPerKg"].median())
     rows = lambda frame: [{"state": r.state, "market": r.market, "medianPerKg": round(float(r.medianPerKg), 2),
@@ -115,7 +131,10 @@ def market_spread(df: pd.DataFrame, commodity: str, state: str | None = None, da
         "spreadPct": round(float((grouped["medianPerKg"].max() - grouped["medianPerKg"].min()) / median * 100), 1),
         "highest": rows(grouped.head(5)),
         "lowest": rows(grouped.tail(5).iloc[::-1]),
-        "note": "Wholesale modal prices only; transport and storage costs are not deducted.",
+        "excludedOutlierMarkets": excluded,
+        "note": ("Wholesale modal prices only; transport and storage costs are not deducted." +
+                 (f" {excluded} market(s) priced below {PRICE_BAND[0]}x or above {PRICE_BAND[1]}x of the median market were "
+                  "left out (likely retail-style markets or entry errors)." if excluded else "")),
     }
 
 
