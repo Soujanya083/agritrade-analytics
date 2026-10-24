@@ -52,3 +52,9 @@ test('wheat opens with its researched pairings and their risks', () => {
   expect(screen.getAllByText(/Supported by research/).length).toBeGreaterThan(0);
   expect(screen.getAllByText(/Mustard shades and out-competes wheat/).length).toBeGreaterThan(0);
 });
+
+test('every pairing card says how strong its evidence is and whether it comes from India', () => {
+  render(<CompanionPlanting />);
+  expect(screen.getAllByText(/research stud(y|ies) counted/).length).toBeGreaterThan(0);
+  expect(screen.getAllByText(/Indian evidence|Not from India/).length).toBeGreaterThan(0);
+});

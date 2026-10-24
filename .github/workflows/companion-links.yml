@@ -1,0 +1,22 @@
+name: Companion source links
+
+# Once a week (and on demand): do the sources behind the Companion Planting tab still open?
+# Only a real 404/410/5xx fails the run. Publishers that refuse robots (403/429) and slow sites are reported but do not fail it.
+on:
+  schedule:
+    - cron: "0 4 * * 1"   # Mondays 04:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  links:
+    name: Check source links
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node agribid/scripts/checkSourceLinks.mjs

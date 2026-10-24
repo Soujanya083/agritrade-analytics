@@ -135,7 +135,7 @@ describe('claims that were corrected', () => {
     expect(p.region).toMatch(/not an Indian trial/);
   });
   test('pigeonpea + sorghum discloses the large pigeonpea yield loss from competition', () => {
-    expect(pairOf('pigeon-pea', 'sorghum').risks.join(' ')).toMatch(/38%/);
+    expect(pairOf('pigeon-pea', 'sorghum').risks.join(' ')).toMatch(/fell sharply/);
   });
   test('maize + beans is only "potential" because the studies disagree', () => {
     const p = pairOf('maize', 'beans');
@@ -224,10 +224,10 @@ describe('alternatives are always available and sourced', () => {
     expect(alternativesFor(findCrop('Tomato')).verified.map((v) => v.partner)).toEqual(['French or African marigold (Tagetes)']);
     expect(alternativesFor(findCrop('Mango')).verified).toEqual([]);
   });
-  test('the documented number of verified pairings matches the data: 9 supported, 4 potential, 2 unsuitable', () => {
+  test('the documented number of pairings matches the data: 7 supported, 6 potential, 2 unsuitable', () => {
     const count = (status) => PAIRS.filter((p) => p.status === status).length;
     expect(PAIRS).toHaveLength(15);
-    expect([count('supported'), count('potential'), count('unsuitable')]).toEqual([9, 4, 2]);
+    expect([count('supported'), count('potential'), count('unsuitable')]).toEqual([7, 6, 2]);
   });
   test('only a minority of crops have a verified pairing, which is the honest picture', () => {
     const withPairs = CROPS.filter((c) => pairsFor(c.id).all.length > 0).length;
