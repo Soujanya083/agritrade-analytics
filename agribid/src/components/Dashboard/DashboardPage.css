@@ -230,6 +230,8 @@
   border-radius: 12px;
   overflow: hidden;
   background: #fff;
+  display: flex;            /* every card in a row is as tall as the tallest, */
+  flex-direction: column;   /* so the Place Bid buttons line up at the bottom */
 }
 
 .listing-image {
@@ -258,6 +260,7 @@
 
 .listing-body {
   padding: 12px 14px;
+  flex: 1 1 auto;
 }
 
 .listing-body h3 {
@@ -275,8 +278,8 @@
   border-top: 1px solid #e6e9ee;
   padding: 10px 14px;
   display: flex;
-  justify-content: space-between;
-  gap: 8px;
+  flex-direction: column;   /* two fixed lines, so a long price never wraps unevenly */
+  gap: 2px;
   font-size: 0.9rem;
 }
 

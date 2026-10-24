@@ -1,4 +1,4 @@
-// Usage (from server/):  PEXELS_API_KEY=... MONGO_URI=... npm run backfill-images
+// Usage (from server/):  npm run backfill-images      (MONGO_URI from .env or the environment; PEXELS_API_KEY is optional)
 //
 // Repairs listings that show a placeholder: crops with no photo, or with the
 // SVG cartoon the old frontend stored in imageUrl. Looks up a real photo per
@@ -10,13 +10,13 @@ const mongoose = require('mongoose');
 const { createCropImageResolver } = require('../services/cropImages');
 
 async function main() {
-  if (!process.env.PEXELS_API_KEY) {
-    console.error('PEXELS_API_KEY is not set - nothing can be looked up. Get a free key at https://www.pexels.com/api/');
-    process.exit(1);
-  }
   await mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/agribid');
   const crops = mongoose.connection.collection('crops');
-  const { resolveCropImage } = createCropImageResolver({ apiKey: process.env.PEXELS_API_KEY });
+  const { resolveCropImage } = createCropImageResolver({
+    apiKey: process.env.PEXELS_API_KEY,
+    useWikipedia: process.env.CROP_PHOTO_WIKIPEDIA !== 'false',
+    timeoutMs: 20000, // a one-off script can afford to wait: Wikipedia is sometimes slow (the app itself waits only 4 s)
+  });
 
   const needsImage = {
     $or: [{ imageUrl: null }, { imageUrl: '' }, { imageUrl: { $regex: '^data:image/svg', $options: 'i' } }],

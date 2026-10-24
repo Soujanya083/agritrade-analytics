@@ -103,7 +103,12 @@ const requireOwnerOf = (paramName) => (req, res, next) => {
 // --- Real crop photos (Pexels), used when a farmer doesn't upload their own.
 // All the logic (category-aware queries, relevance checks, caching) lives in
 // services/cropImages.js. Returns { url, credit, sourceUrl } or null.
-const { resolveCropImage } = createCropImageResolver({ apiKey: process.env.PEXELS_API_KEY });
+// Real crop photos: Pexels when a key is set, and always the keyless Wikipedia fallback (set CROP_PHOTO_WIKIPEDIA=false to turn it off).
+const { resolveCropImage } = createCropImageResolver({
+  apiKey: process.env.PEXELS_API_KEY,
+  // never reach out to Wikipedia from automated tests
+  useWikipedia: process.env.CROP_PHOTO_WIKIPEDIA !== 'false' && !process.env.JEST_WORKER_ID,
+});
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const isEmailValid = (email) => EMAIL_REGEX.test(String(email || '').toLowerCase().trim());

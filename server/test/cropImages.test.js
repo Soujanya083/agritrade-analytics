@@ -127,3 +127,70 @@ describe('createCropImageResolver', () => {
     await expect(resolveCropImage('Orange', 'Fruits')).resolves.toBeNull();
   });
 });
+
+
+describe('keyless Wikipedia fallback', () => {
+  const wikiPage = (title, thumb) => ({ ok: true, status: 200, json: async () => ({ query: { pages: { 1: { title, ...(thumb ? { thumbnail: thumb } : {}) } } } }) });
+  const photoThumb = { source: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Onions.jpg/640px-Onions.jpg', width: 640, height: 480 };
+
+  test('is off unless asked for (no key, no network)', async () => {
+    const wikiFetchImpl = jest.fn();
+    const { resolveCropImage } = createCropImageResolver({ apiKey: '', wikiFetchImpl });
+    expect(await resolveCropImage('Onion', 'Vegetables')).toBeNull();
+    expect(wikiFetchImpl).not.toHaveBeenCalled();
+  });
+
+  test('without a Pexels key it returns the Wikipedia lead photo with attribution and a clear User-Agent', async () => {
+    const wikiFetchImpl = jest.fn(async () => wikiPage('Onion', photoThumb));
+    const { resolveCropImage } = createCropImageResolver({ apiKey: '', useWikipedia: true, wikiFetchImpl });
+    const result = await resolveCropImage('Onion', 'Vegetables');
+    expect(result.url).toBe(photoThumb.source);
+    expect(result.credit).toBe('Photo from Wikipedia (Onion)');
+    expect(result.sourceUrl).toBe('https://en.wikipedia.org/wiki/Onion');
+    const [url, options] = wikiFetchImpl.mock.calls[0];
+    expect(url).toContain('titles=Onion');
+    expect(options.headers['User-Agent']).toContain('AgriTradeAnalytics');
+  });
+
+  test('local names are looked up under their English article (Brinjal -> Eggplant)', async () => {
+    const wikiFetchImpl = jest.fn(async () => wikiPage('Eggplant', photoThumb));
+    const { resolveCropImage } = createCropImageResolver({ useWikipedia: true, wikiFetchImpl });
+    await resolveCropImage('Brinjal', 'Vegetables');
+    expect(wikiFetchImpl.mock.calls[0][0]).toContain('titles=Eggplant');
+  });
+
+  test('rejects diagrams (svg), tiny images and pages without a photo, then tries the next title', async () => {
+    const wikiFetchImpl = jest.fn()
+      .mockResolvedValueOnce(wikiPage('Brinjal', { source: 'https://x/Diagram.svg.png', width: 640, height: 480 }))
+      .mockResolvedValueOnce(wikiPage('Aubergine', { source: 'https://x/small.jpg', width: 100, height: 80 }))
+      .mockResolvedValue(wikiPage('Eggplant', null));
+    const { resolveCropImage } = createCropImageResolver({ useWikipedia: true, wikiFetchImpl });
+    expect(await resolveCropImage('Brinjal', 'Vegetables')).toBeNull();
+    expect(wikiFetchImpl).toHaveBeenCalledTimes(3);
+  });
+
+  test('a missing page or a failed request is a quiet null, never an error', async () => {
+    const missing = { ok: true, status: 200, json: async () => ({ query: { pages: { '-1': { title: 'Zzz', missing: '' } } } }) };
+    const a = createCropImageResolver({ useWikipedia: true, wikiFetchImpl: jest.fn(async () => missing) });
+    expect(await a.resolveCropImage('Zzz', 'Vegetables')).toBeNull();
+    const b = createCropImageResolver({ useWikipedia: true, wikiFetchImpl: jest.fn(async () => ({ ok: false, status: 500, json: async () => ({}) })) });
+    expect(await b.resolveCropImage('Onion', 'Vegetables')).toBeNull();
+  });
+
+  test('is used when Pexels has no verified photo, and Pexels is preferred when it does', async () => {
+    const wikiFetchImpl = jest.fn(async () => wikiPage('Orange (fruit)', photoThumb));
+    const none = createCropImageResolver({ apiKey: 'k', fetchImpl: jest.fn(async () => okResponse([photo('Sunset over hills')])), useWikipedia: true, wikiFetchImpl });
+    expect((await none.resolveCropImage('Orange', 'Fruits')).credit).toContain('Wikipedia');
+    const wikiOnlyIfNeeded = jest.fn();
+    const some = createCropImageResolver({ apiKey: 'k', fetchImpl: jest.fn(async () => okResponse([photo('Fresh oranges')])), useWikipedia: true, wikiFetchImpl: wikiOnlyIfNeeded });
+    expect((await some.resolveCropImage('Orange', 'Fruits')).credit).toContain('Pexels');
+    expect(wikiOnlyIfNeeded).not.toHaveBeenCalled();
+  });
+
+  test('a Pexels network failure still falls back to Wikipedia', async () => {
+    const fetchImpl = jest.fn().mockRejectedValue(new Error('network down'));
+    const wikiFetchImpl = jest.fn(async () => wikiPage('Onion', photoThumb));
+    const { resolveCropImage } = createCropImageResolver({ apiKey: 'k', fetchImpl, useWikipedia: true, wikiFetchImpl, logger: silent });
+    expect((await resolveCropImage('Onion', 'Vegetables')).credit).toContain('Wikipedia');
+  });
+});
