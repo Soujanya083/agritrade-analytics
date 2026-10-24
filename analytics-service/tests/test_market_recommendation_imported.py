@@ -20,6 +20,7 @@ def _frame(markets, days=40, end="2026-10-20"):
 
 
 def _patch(monkeypatch, df, names=("Onion",)):
+    monkeypatch.setattr(mr, "fetch_mandi_prices", lambda *a, **k: {"error": "no live data in this test"})
     monkeypatch.setattr(real_market, "real_market_commodities", lambda: [{"commodity": n} for n in names])
     monkeypatch.setattr(mandi_store, "load_mandi_prices", lambda commodity, *a, **k: df)
 
@@ -70,3 +71,14 @@ def test_only_the_latest_30_days_are_ranked(monkeypatch):
     _patch(monkeypatch, pd.concat([old, new]))
     recs = REAL("Onion")["records"]
     assert max(r["modal_price"] for r in recs) == 2200
+
+
+def test_live_prices_win_over_imported_history(monkeypatch):
+    _patch(monkeypatch, _frame([("Karnataka", "Shimoga", 2200), ("Karnataka", "Udupi", 1800),
+                                ("Maharashtra", "Lasalgaon", 2500)]))
+    live = {"commodity": "Onion", "source": "live", "records": [
+        {"state": "Karnataka", "district": "D", "market": "LiveMarket", "modal_price": 3000}]}
+    monkeypatch.setattr(mr, "fetch_mandi_prices", lambda *a, **k: live)
+    monkeypatch.setattr(mr, "_imported_market_records", REAL)
+    result = mr.get_market_recommendation("Onion", farmer_state="Karnataka", quantity_kg=500)
+    assert result["source"] == "live" and result["recommendedMarket"]["market"] == "LiveMarket"

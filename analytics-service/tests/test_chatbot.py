@@ -65,6 +65,9 @@ def test_state_detection():
     ("should i sell now or wait", True, "sell_or_wait"),
     ("where should i sell", True, "market"),
     ("price trend of tomato", True, "price_trend"),
+    ("what is the price of onion today", True, "today_price"),
+    ("today's mandi price of tomato", True, "today_price"),
+    ("current price", False, "needs_crop"),
     ("which crop has higher demand", False, "recommendation"),
     ("what are the best selling crops", False, "best_selling"),
     ("how do i control aphids on mustard", False, None),
@@ -236,3 +239,14 @@ def test_overlong_messages_are_truncated(monkeypatch):
 def test_greeting_and_empty_message_show_help():
     assert chatbot.handle_message("hi")["intent"] == "help"
     assert chatbot.handle_message("   ")["intent"] == "help"
+
+
+def test_today_price_answer_uses_live_mandi_data_and_names_the_date(monkeypatch):
+    fake = {"commodity": "Tomato", "source": "live", "asOf": "2026-10-23", "ageDays": 0, "isCurrent": True,
+            "summary": {"marketsReported": 3, "medianPerKg": 20.0, "lowPerKg": 18.0, "highPerKg": 22.0},
+            "rows": [{"market": "Hubli", "modalPricePerKg": 22.0, "unusual": False}]}
+    monkeypatch.setattr(chatbot.today_prices, "get_today_prices", lambda *a, **k: fake)
+    monkeypatch.setattr(chatbot.llm_client, "generate", lambda *a, **k: pytest.fail("LLM must not be used"))
+    out = chatbot.handle_message("What is the price of tomato today?")
+    assert out["intent"] == "today_price" and out["source"] == "project_data"
+    assert "2026-10-23" in out["reply"] and "₹20.0/kg" in out["reply"] and "Hubli" in out["reply"]
