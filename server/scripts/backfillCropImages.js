@@ -12,7 +12,11 @@ const { createCropImageResolver } = require('../services/cropImages');
 async function main() {
   await mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/agribid');
   const crops = mongoose.connection.collection('crops');
-  const { resolveCropImage } = createCropImageResolver({ apiKey: process.env.PEXELS_API_KEY, useWikipedia: process.env.CROP_PHOTO_WIKIPEDIA !== 'false' });
+  const { resolveCropImage } = createCropImageResolver({
+    apiKey: process.env.PEXELS_API_KEY,
+    useWikipedia: process.env.CROP_PHOTO_WIKIPEDIA !== 'false',
+    timeoutMs: 20000, // a one-off script can afford to wait: Wikipedia is sometimes slow (the app itself waits only 4 s)
+  });
 
   const needsImage = {
     $or: [{ imageUrl: null }, { imageUrl: '' }, { imageUrl: { $regex: '^data:image/svg', $options: 'i' } }],
