@@ -65,6 +65,22 @@ function scorePhoto(photo, cropName, category) {
   return score;
 }
 
+// Keyless fallback: the lead photo of the crop's Wikipedia article (free-licence images only).
+// Used when there is no Pexels key, or Pexels has no verified photo. Titles for local names:
+const WIKI_TITLES = {
+  brinjal: 'Eggplant', jowar: 'Sorghum', bajra: 'Pearl millet', ragi: 'Finger millet', maize: 'Maize', chana: 'Chickpea',
+  'toor dal': 'Pigeon pea', 'tur dal': 'Pigeon pea', moong: 'Mung bean', urad: 'Vigna mungo', masoor: 'Lentil',
+  'green chilli': 'Chili pepper', chilli: 'Chili pepper', capsicum: 'Bell pepper', 'bitter gourd': 'Momordica charantia',
+  'bottle gourd': 'Calabash', 'ladies finger': 'Okra', bhindi: 'Okra', sapota: 'Sapodilla', litchi: 'Lychee',
+  groundnut: 'Peanut', grapes: 'Grape', peas: 'Pea', beans: 'Common bean',
+};
+const capitalise = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+const wikiTitles = (cropName) => {
+  const name = norm(cropName);
+  return [...new Set([WIKI_TITLES[name], capitalise(name), ...(ALIASES[name] || []).map(capitalise)].filter(Boolean))];
+};
+const WIKI_MIN_WIDTH = 250;
+
 const SUCCESS_TTL_MS = 24 * 60 * 60 * 1000;
 const FAILURE_TTL_MS = 10 * 60 * 1000; // retry soon: a failure may be transient
 const RATE_LIMIT_BACKOFF_MS = 60 * 1000;
@@ -72,6 +88,7 @@ const MAX_CACHE_ENTRIES = 500;
 
 function createCropImageResolver({
   apiKey, fetchImpl = globalThis.fetch, now = Date.now, timeoutMs = 4000, logger = console,
+  useWikipedia = false, wikiFetchImpl = globalThis.fetch,
 } = {}) {
   const cache = new Map(); // key -> { value, expires }
   const inflight = new Map();
@@ -96,7 +113,35 @@ function createCropImageResolver({
     }
   }
 
-  async function lookup(cropName, category) {
+  async function wikipediaLookup(cropName) {
+    for (const title of wikiTitles(cropName)) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const url = 'https://en.wikipedia.org/w/api.php?action=query&format=json&redirects=1&prop=pageimages&piprop=thumbnail'
+          + `&pithumbsize=640&titles=${encodeURIComponent(title)}`;
+        const response = await wikiFetchImpl(url, {
+          headers: { 'User-Agent': 'AgriTradeAnalytics/1.0 (student project; crop photos)' }, signal: controller.signal,
+        });
+        if (!response.ok) continue;
+        const pages = ((await response.json()).query || {}).pages || {};
+        const page = Object.values(pages)[0];
+        const thumb = page && page.thumbnail;
+        if (!thumb || !thumb.source || (thumb.width || 0) < WIKI_MIN_WIDTH) continue; // missing page, no photo, or too small
+        if (/\.svg(\.png)?$/i.test(thumb.source)) continue; // diagrams and icons are not photos
+        return {
+          url: thumb.source,
+          credit: `Photo from Wikipedia (${page.title})`,
+          sourceUrl: `https://en.wikipedia.org/wiki/${encodeURIComponent(String(page.title).replace(/ /g, '_'))}`,
+        };
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+    return null;
+  }
+
+  async function pexelsLookup(cropName, category) {
     for (const query of buildSearchPlan(cropName, category)) {
       if (now() < blockedUntil) return null;
       const photos = await search(query);
@@ -118,9 +163,23 @@ function createCropImageResolver({
     return null;
   }
 
+  async function lookup(cropName, category) {
+    let found = null;
+    if (apiKey) {
+      try {
+        found = await pexelsLookup(cropName, category);
+      } catch (error) {
+        if (!useWikipedia) throw error; // keep the original behaviour when there is no fallback
+        logger.warn && logger.warn(`Pexels lookup failed for "${cropName}": ${error.name}`);
+      }
+    }
+    if (!found && useWikipedia) found = await wikipediaLookup(cropName);
+    return found;
+  }
+
   // Resolves to { url, credit, sourceUrl } or null. Never throws, never blocks listing a crop.
   async function resolveCropImage(cropName, category) {
-    if (!apiKey || !norm(cropName)) return null;
+    if ((!apiKey && !useWikipedia) || !norm(cropName)) return null;
     const key = `${norm(cropName)}|${normCategory(category) || ''}`;
     const cached = cache.get(key);
     if (cached && cached.expires > now()) return cached.value;
@@ -146,4 +205,4 @@ function createCropImageResolver({
   return { resolveCropImage, _cache: cache };
 }
 
-module.exports = { createCropImageResolver, buildSearchPlan, scorePhoto, matchTerms };
+module.exports = { createCropImageResolver, buildSearchPlan, scorePhoto, matchTerms, wikiTitles };
