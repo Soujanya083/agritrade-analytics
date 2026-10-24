@@ -251,7 +251,8 @@ def _answer_today_price(crop, entities):
         reply = (f"I couldn't get today's mandi prices for {crop} ({result['error']}) "
                  "If you want, ask about this marketplace's listing trend instead.")
         return _project(reply, "today_price", entities=entities)
-    s, where = result["summary"], (f" in {entities['state']}" if entities.get("state") else "")
+    s = result["summary"]
+    where = f" in {entities['state']}" if entities.get("state") and not result.get("stateFallback") else ""
     top = next((r for r in result["rows"] if not r["unusual"]), None)
     if result["isCurrent"]:
         head = f"Today's mandi prices for {crop}{where} (reported {result['asOf']}):"
@@ -262,6 +263,8 @@ def _answer_today_price(crop, entities):
              f"(range ₹{s['lowPerKg']}-₹{s['highPerKg']}).")
     if top:
         reply += f" Highest: {top['market']} (₹{top['modalPricePerKg']}/kg)."
+    if result.get("stateFallback"):
+        reply += f" There are no records for {entities['state']} today, so this is all-India."
     reply += " Source: AGMARKNET (data.gov.in); these are wholesale prices, retail is higher."
     return _project(reply, "today_price", result, entities)
 

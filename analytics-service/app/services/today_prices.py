@@ -13,6 +13,7 @@ from app.services import mandi_comparison
 from app.services.market.market_overview import PRICE_BAND
 
 CURRENT_WITHIN_DAYS = 3   # records at most this old count as "today's prices"
+NO_RECORDS_HINT = "no records for this commodity/state"   # wording of mandi_comparison's "empty answer" error
 
 
 def _number(value):
@@ -41,7 +42,15 @@ def _parse_date(text):
 
 def get_today_prices(commodity: str, state: str | None = None, limit: int = 200, today: date | None = None) -> dict:
     today = today or date.today()
-    data = mandi_comparison.fetch_mandi_prices(commodity.strip().title(), state, limit)
+    name = commodity.strip().title()
+    data = mandi_comparison.fetch_mandi_prices(name, state, limit)
+    state_fallback = False
+    # If the farmer's state simply has no records today, show all-India and say so. A timeout or a rejected key
+    # is NOT an empty answer, so those errors are passed through untouched.
+    if "error" in data and state and NO_RECORDS_HINT in data["error"]:
+        wider = mandi_comparison.fetch_mandi_prices(name, None, limit)
+        if "error" not in wider:
+            data, state_fallback = wider, True
     if "error" in data:
         return data
 
@@ -77,8 +86,10 @@ def get_today_prices(commodity: str, state: str | None = None, limit: int = 200,
     as_of = max(dates) if dates else None
     age = (today - date.fromisoformat(as_of)).days if as_of else None
     return {
-        "commodity": commodity.strip().title(),
-        "state": state,
+        "commodity": name,
+        "state": None if state_fallback else state,
+        "requestedState": state,
+        "stateFallback": state_fallback,
         "source": data.get("source"),
         "asOf": as_of,
         "ageDays": age,
@@ -87,6 +98,7 @@ def get_today_prices(commodity: str, state: str | None = None, limit: int = 200,
                     "lowPerKg": min(prices), "highPerKg": max(prices)},
         "unusualMarkets": len(unusual),
         "rows": normal + unusual,
-        "note": "Wholesale (mandi) modal prices from AGMARKNET, shown per kg. Retail prices are higher, "
-                "and prices differ from market to market.",
+        "note": ("Wholesale (mandi) modal prices from AGMARKNET, shown per kg. Retail prices are higher, "
+                 "and prices differ from market to market."
+                 + (f" There are no records for {state} today, so these are all-India prices." if state_fallback else "")),
     }

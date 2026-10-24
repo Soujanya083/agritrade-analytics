@@ -113,8 +113,8 @@ def test_paging_respects_max_records():
 def test_api_fetcher_sends_key_paging_and_filters():
     seen = {}
 
-    def fake_get(url, params=None, timeout=None):
-        seen.update(url=url, params=params)
+    def fake_get(url, params=None, timeout=None, headers=None):
+        seen.update(url=url, params=params, headers=headers)
         return type("R", (), {"raise_for_status": lambda self: None, "json": lambda self: {"records": []}})()
 
     fetch = mandi_import.make_api_fetcher("KEY", "RES", {"state.keyword": "Punjab"}, get=fake_get)
@@ -122,12 +122,13 @@ def test_api_fetcher_sends_key_paging_and_filters():
     assert seen["url"].endswith("/resource/RES")
     assert seen["params"]["api-key"] == "KEY" and seen["params"]["offset"] == 30 and seen["params"]["limit"] == 10
     assert seen["params"]["filters[state.keyword]"] == "Punjab"
+    assert "python-requests" not in seen["headers"]["User-Agent"]
 
 
 def test_api_import_end_to_end_with_a_fake_server():
     data = api_rows(12)
 
-    def fake_get(url, params=None, timeout=None):
+    def fake_get(url, params=None, timeout=None, headers=None):
         page = data[params["offset"]:params["offset"] + 5]
         body = {"records": page, "total": 12}
         return type("R", (), {"raise_for_status": lambda self: None, "json": lambda self: body})()

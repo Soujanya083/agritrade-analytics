@@ -32,3 +32,8 @@ test('old data is never presented as today', () => {
   expect(screen.getByText(/61 days old/)).toBeInTheDocument();
   expect(screen.getByText(/saved snapshot/)).toBeInTheDocument();
 });
+
+test('says so when it shows all-India prices because the farmer\'s state has no records today', () => {
+  render(<TodayPricesView data={{ ...data, stateFallback: true, requestedState: 'Karnataka' }} />);
+  expect(screen.getByText(/No records for Karnataka today, so this shows all-India prices/)).toBeInTheDocument();
+});

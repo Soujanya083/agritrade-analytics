@@ -53,6 +53,14 @@ def cors_origins() -> list[str]:
     return [origin.strip().rstrip("/") for origin in raw.split(",") if origin.strip()]
 
 
+# The data.gov.in server stalls requests that identify themselves as the default "python-requests" client
+# (measured: no answer in 30 s) but answers a clearly named client in under a second. So we say who we are.
+GOVT_API_HEADERS = {
+    "User-Agent": "AgriTradeAnalytics/1.0 (student project; mandi price lookup)",
+    "Accept": "application/json",
+}
+
+
 def mandi_credentials() -> tuple[str | None, str | None]:
     return os.getenv("DATAGOVIN_API_KEY") or None, os.getenv("DATAGOVIN_RESOURCE_ID") or None
 

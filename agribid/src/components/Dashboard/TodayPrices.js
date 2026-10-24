@@ -21,6 +21,7 @@ export function TodayPricesView({ data, maxRows = 10 }) {
           : `⚠️ Not today's prices: the latest records are from ${data.asOf} (${data.ageDays} days old)`}
         {' · '}Source: {data.source === 'live' ? 'AGMARKNET (data.gov.in), live' : 'saved snapshot of AGMARKNET data'}
       </p>
+      {data.stateFallback && <p style={{ margin: '0 0 8px', fontSize: 13, color: '#b26a00' }}>No records for {data.requestedState} today, so this shows all-India prices.</p>}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
         <span style={chip}>Median <strong>{rupees(s.medianPerKg)}/kg</strong></span>
         <span style={chip}>Lowest <strong>{rupees(s.lowPerKg)}/kg</strong></span>
