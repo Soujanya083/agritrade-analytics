@@ -12,8 +12,9 @@
 
 import { PAIRS, GENERAL_PRINCIPLES, STATUS_META } from './companionPairs';
 import { SOURCES, SOURCE_TYPE_LABEL, sourceList } from './companionSources';
+import { evidenceBadges, deriveStatus, pairKey } from './companionEvidence';
 
-export { STATUS_META, SOURCES, SOURCE_TYPE_LABEL, sourceList, PAIRS, GENERAL_PRINCIPLES };
+export { STATUS_META, SOURCES, SOURCE_TYPE_LABEL, sourceList, PAIRS, GENERAL_PRINCIPLES, evidenceBadges, deriveStatus, pairKey };
 
 export const CATEGORY_META = {
   Fruits: { label: 'Fruits', icon: '🍎', from: '#ffedd5', to: '#f97316' },
@@ -176,7 +177,7 @@ const partnerOf = (pair, cropId) => {
 
 export function pairsFor(cropId) {
   const mine = PAIRS.filter((p) => p.a === cropId || p.b === cropId);
-  const all = mine.map((p) => ({ ...p, partner: partnerOf(p, cropId), sourceList: sourceList(p.sources) }));
+  const all = mine.map((p) => ({ ...p, partner: partnerOf(p, cropId), sourceList: sourceList(p.sources), evidence: evidenceBadges(p) }));
   return {
     all,
     supported: all.filter((p) => p.status === 'supported'),
@@ -228,7 +229,7 @@ export function checkPair(aName, bName) {
 
   const pair = PAIRS.find((p) => typeof p.b === 'string' && ((p.a === a.id && p.b === b.id) || (p.a === b.id && p.b === a.id)));
   const base = { a, b, alternatives: { [a.id]: alternativesFor(a), [b.id]: alternativesFor(b) } };
-  if (pair) return { ...base, verdict: pair.status, pair: { ...pair, sourceList: sourceList(pair.sources) }, message: pair.summary };
+  if (pair) return { ...base, verdict: pair.status, pair: { ...pair, sourceList: sourceList(pair.sources), evidence: evidenceBadges(pair) }, message: pair.summary };
 
   if (a.family === b.family) {
     return {

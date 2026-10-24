@@ -144,3 +144,10 @@
   .cp-grid { grid-template-columns:repeat(auto-fill,minmax(96px,1fr)); }
   .cp-detail-body { padding:4px 12px 14px; }
 }
+
+.cp-evidence { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; }
+.cp-chip { font-size:.72rem; background:#f1f5f9; color:#334155; border-radius:999px; padding:2px 9px; white-space:nowrap; }
+.cp-chip--in { background:#dcfce7; color:#166534; }
+.cp-chip--out { background:#fef3c7; color:#92400e; }
+.cp-chip--warn { background:#fee2e2; color:#991b1b; }
+.cp-src-checked { margin-left:6px; font-size:.7rem; color:var(--cp-muted); white-space:nowrap; }

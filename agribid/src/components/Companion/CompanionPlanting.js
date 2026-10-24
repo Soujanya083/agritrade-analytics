@@ -21,10 +21,26 @@ function SourceLinks({ ids }) {
           <li key={s.id}>
             <a href={s.url} target="_blank" rel="noopener noreferrer">{s.title}</a>
             <span className={`cp-src-type cp-src-type--${s.type}`}>{SOURCE_TYPE_LABEL[s.type]}</span>
+            <span className="cp-src-checked">{s.verifiedOn ? `link checked ${s.verifiedOn}` : 'link not re-checked yet'}</span>
           </li>
         ))}
       </ul>
     </details>
+  );
+}
+
+// How strong is the evidence behind this card, in plain terms: how many studies the rules counted, whether any of
+// it comes from India, and whether the numbers shown were checked against the source.
+function EvidenceLine({ evidence }) {
+  if (!evidence) return null;
+  const { studies, reviews, indian, verifiedClaims, pendingClaims } = evidence;
+  return (
+    <div className="cp-evidence">
+      <span className="cp-chip">{studies} research stud{studies === 1 ? 'y' : 'ies'} counted{reviews ? ` + ${reviews} review${reviews === 1 ? '' : 's'}` : ''}</span>
+      <span className={`cp-chip ${indian ? 'cp-chip--in' : 'cp-chip--out'}`}>{indian ? 'Indian evidence' : 'Not from India'}</span>
+      {verifiedClaims > 0 && <span className="cp-chip">{verifiedClaims} figure{verifiedClaims === 1 ? '' : 's'} checked against the source</span>}
+      {pendingClaims > 0 && <span className="cp-chip cp-chip--warn">{pendingClaims} earlier figure{pendingClaims === 1 ? '' : 's'} not shown until verified</span>}
+    </div>
   );
 }
 
@@ -56,6 +72,7 @@ function PairCard({ pair, partnerName }) {
       <Bullets title="Risks and limits" items={pair.risks} tone="bad" />
       <Bullets title="Conditions" items={pair.conditions} tone="info" />
       {pair.region && <p className="cp-region">Evidence from: {pair.region}</p>}
+      <EvidenceLine evidence={pair.evidence} />
       <SourceLinks ids={pair.sources} />
     </article>
   );
@@ -119,6 +136,7 @@ function PairChecker() {
                 <Bullets title="Benefits reported" items={result.pair.benefits} tone="good" />
                 <Bullets title="Risks and limits" items={result.pair.risks} tone="bad" />
                 <Bullets title="Conditions" items={result.pair.conditions} tone="info" />
+                <EvidenceLine evidence={result.pair.evidence} />
                 <SourceLinks ids={result.pair.sources} />
               </>
             ) : (
