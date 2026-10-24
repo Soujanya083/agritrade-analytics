@@ -27,6 +27,13 @@ Download a public AGMARKNET history CSV (for example the "Agmarknet / Daily Whol
 
 Prices must be Rs per quintal (the AGMARKNET standard). Dates may be `dd/mm/yyyy` or ISO.
 
+## Step 1b - prepare the Kaggle file (reproducible)
+The raw Kaggle file ("Agriculture price dataset") has different headers and mixed date styles, so the importer rejects it. Convert it with one command (nothing else about the data changes):
+```powershell
+python scripts/prepare_kaggle_mandi.py "Agriculture_price_dataset.csv" "mandi_clean_v2.csv"
+```
+It renames the headers, rewrites dates as ISO, and prints a check report: date range, whether the file is in chronological order, and per crop the days with data and gaps longer than 3 days. It stops without writing anything if a date contradicts the month-first rule (for example a first number above 12). Prices and rows are never changed. For your report, cite the dataset's exact title, author, URL and licence from its Kaggle page.
+
 ## Step 2 - import it (look first, then import only what you need)
 Always run from `analytics-service` with the virtual environment active (`.\venv\Scripts\Activate.ps1`).
 
