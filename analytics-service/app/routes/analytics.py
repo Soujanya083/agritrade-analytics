@@ -46,6 +46,7 @@ from app.services import (
     price_volatility,
     provenance,
     recommendation,
+    today_prices,
     trends,
 )
 from app.services.market import real_market
@@ -242,6 +243,16 @@ def get_buyer_segments(
 @router.get("/mandi-prices")
 def get_mandi_prices(commodity: str = Query(..., min_length=1, max_length=80), state: str | None = Query(None, max_length=60)):
     return ok_or_http_error(mandi_comparison.fetch_mandi_prices(commodity.strip(), state))
+
+
+@router.get("/today-prices")
+def get_today_prices_endpoint(
+    commodity: str = Query(..., min_length=1, max_length=80),
+    state: str | None = Query(None, max_length=60),
+    limit: int = Query(200, ge=1, le=500),
+):
+    """Today's mandi prices, market by market (live from data.gov.in; says clearly when the data is old)."""
+    return ok_or_http_error(today_prices.get_today_prices(commodity, state, limit))
 
 
 @router.get("/mandi-compare")

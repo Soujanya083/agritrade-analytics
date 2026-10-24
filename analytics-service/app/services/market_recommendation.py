@@ -99,7 +99,12 @@ def get_market_recommendation(
     (modal price minus transport cost minus storage cost), using real
     AGMARKNET records. Returns an error dict, unchanged, if no market
     data is available - never fabricates a market or a price."""
-    mandi_data = _imported_market_records(crop_name) or fetch_mandi_prices(crop_name, state=None, limit=25)
+    # Today's live prices win. Imported history (which can be old) is the next choice, then the saved snapshot.
+    live = fetch_mandi_prices(crop_name, state=None, limit=25)
+    if "error" not in live and live.get("source") == "live":
+        mandi_data = live
+    else:
+        mandi_data = _imported_market_records(crop_name) or live
     if "error" in mandi_data:
         return mandi_data
 

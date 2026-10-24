@@ -16,6 +16,8 @@ your app's crop names or seeded locations - this module does a
 best-effort case-insensitive match and reports clearly when no match
 is found, rather than fabricating a comparison.
 """
+import logging
+
 import requests
 from dotenv import load_dotenv
 from app import config
@@ -23,6 +25,7 @@ from app.services.mandi_snapshot import get_snapshot
 from app.utils.ttl_cache import ttl_cache
 
 load_dotenv()
+log = logging.getLogger(__name__)
 
 BASE_URL = "https://api.data.gov.in/resource"
 
@@ -60,28 +63,41 @@ def fetch_mandi_prices(commodity: str, state: str = None, limit: int = 20) -> di
     if state:
         params["filters[state.keyword]"] = state
 
-    try:
-        resp = requests.get(url, params=params, timeout=6)
-        resp.raise_for_status()
-        data = resp.json()
-        records = data.get("records", [])
-        if records:
-            return {"commodity": commodity, "state": state, "records": records, "source": "live"}
-    except requests.exceptions.RequestException:
-        pass  # fall through to cached snapshot below
+    failure = None
+    for attempt in (1, 2):   # one retry: the government server is occasionally slow
+        try:
+            resp = requests.get(url, params=params, headers=config.GOVT_API_HEADERS, timeout=(5, 12))
+            resp.raise_for_status()
+            records = resp.json().get("records", [])
+            if records:
+                return {"commodity": commodity, "state": state, "records": records, "source": "live"}
+            failure = "the API answered but has no records for this commodity/state today"
+            break
+        except requests.exceptions.HTTPError as error:
+            status = getattr(error.response, "status_code", "?")
+            failure = f"HTTP {status} from the API" + (" (key rejected?)" if status in (401, 403) else "")
+            break
+        except requests.exceptions.Timeout:
+            failure = "the API did not answer in time"
+        except requests.exceptions.RequestException as error:
+            failure = f"could not reach the API ({type(error).__name__})"
+        except ValueError:
+            failure = "the API answered with something that is not JSON"
+            break
+    log.warning("data.gov.in live call failed for %s/%s: %s", commodity, state, failure)
 
     # Live call failed or returned nothing - use cached real-data snapshot
     cached = get_snapshot(commodity, state)
     if cached:
-        return {"commodity": commodity, "state": state, "records": cached, "source": "cached_snapshot"}
+        return {"commodity": commodity, "state": state, "records": cached, "source": "cached_snapshot",
+                "liveFailure": failure}
 
     return {
         "error": (
             f"No mandi price records found for commodity='{commodity}'"
             + (f", state='{state}'" if state else "")
-            + " - live API unreachable and no cached snapshot available for this "
-            "commodity/state. Try 'Onion' (has a cached fallback), or check your "
-            "network connection."
+            + f" - live API: {failure}; and no cached snapshot is available for this "
+            "commodity/state."
         )
     }
 

@@ -37,6 +37,7 @@ from app.services import (
     market_recommendation,
     price_prediction,
     recommendation,
+    today_prices,
     trends,
 )
 
@@ -165,6 +166,12 @@ def _has(text: str, *phrases: str) -> bool:
 
 def detect_intent(text: str, has_crop: bool) -> str | None:
     """Returns a project-data intent name, or None for a general question."""
+    # A price question about today/now is a LIVE mandi question (checked before the "mandi" -> best-market rule).
+    if (_has(text, "price", "prices", "rate", "rates")
+            and _has(text, "today", "today's", "todays", "current", "currently", "latest", "right now")
+            and not _has(text, "trend", "history", "how has", "where to sell", "where should i sell",
+                         "best market", "which market")):
+        return "today_price" if has_crop else "needs_crop"
     # "where should I sell" must be checked before "should I sell".
     if _has(text, "where to sell", "where should i sell", "best market", "which market", "mandi", "net profit"):
         return "market"
@@ -238,6 +245,30 @@ def _answer_trend(crop, entities):
                     f"(as of {latest['date']}).", "price_trend", results, entities)
 
 
+def _answer_today_price(crop, entities):
+    result = today_prices.get_today_prices(crop, entities.get("state"))
+    if "error" in result:
+        reply = (f"I couldn't get today's mandi prices for {crop} ({result['error']}) "
+                 "If you want, ask about this marketplace's listing trend instead.")
+        return _project(reply, "today_price", entities=entities)
+    s = result["summary"]
+    where = f" in {entities['state']}" if entities.get("state") and not result.get("stateFallback") else ""
+    top = next((r for r in result["rows"] if not r["unusual"]), None)
+    if result["isCurrent"]:
+        head = f"Today's mandi prices for {crop}{where} (reported {result['asOf']}):"
+    else:
+        head = (f"I could not get today's live prices. The most recent mandi data I have for {crop}{where} is from "
+                f"{result['asOf']} ({result['ageDays']} days old):")
+    reply = (f"{head} median ₹{s['medianPerKg']}/kg across {s['marketsReported']} markets "
+             f"(range ₹{s['lowPerKg']}-₹{s['highPerKg']}).")
+    if top:
+        reply += f" Highest: {top['market']} (₹{top['modalPricePerKg']}/kg)."
+    if result.get("stateFallback"):
+        reply += f" There are no records for {entities['state']} today, so this is all-India."
+    reply += " Source: AGMARKNET (data.gov.in); these are wholesale prices, retail is higher."
+    return _project(reply, "today_price", result, entities)
+
+
 def _answer_sell_or_wait(crop, entities):
     result = decision_engine.get_sell_or_wait_recommendation(crop)
     if "error" in result:
@@ -255,7 +286,8 @@ def _answer_market(crop, entities):
     return _project(
         f"For {crop}, the best market right now is {best['market']} ({best['district']}, {best['state']}): "
         f"modal price ₹{best['modalPricePerQuintal']}/quintal, expected net ₹{best['expectedNetProfitPerQuintal']}/quintal "
-        f"after assumed transport and storage costs. Prices: {result.get('source')}.",
+        f"after assumed transport and storage costs. Prices: {result.get('source')}"
+        + (f", data up to {result['dataAsOf']}" if result.get("dataAsOf") else "") + ".",
         "market", result, entities)
 
 
@@ -281,6 +313,7 @@ _CROP_ANSWERERS = {
     "price_prediction": _answer_price_prediction,
     "demand_forecast": _answer_demand,
     "price_trend": _answer_trend,
+    "today_price": _answer_today_price,
     "sell_or_wait": _answer_sell_or_wait,
     "market": _answer_market,
 }

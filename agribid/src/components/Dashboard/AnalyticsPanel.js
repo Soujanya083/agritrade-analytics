@@ -4,6 +4,7 @@ import {
 } from 'recharts';
 import ChatbotWidget from './ChatbotWidget';
 import DecisionSummaryCard from './DecisionSummaryCard';
+import TodayPrices from './TodayPrices';
 import { analytics, describeError, isNoDataError } from '../../api/analyticsClient';
 import { useAnalytics } from '../../api/useAnalytics';
 import RealMarketSection, { ProvenanceBanner } from './RealMarketSection';
@@ -197,6 +198,10 @@ const AnalyticsPanel = () => {
             {backtest.data?.bestModelBeatsNaiveBaseline === false ? 'It did NOT beat the naive baseline, so treat forecasts with caution.' : backtest.data?.bestModelBeatsNaiveBaseline ? 'It beat the naive baseline.' : ''}
           </p>
         </Async>
+      </Section>
+
+      <Section title="Today's mandi prices" subtitle="What this crop is selling for right now, market by market" defaultOpen>
+        <TodayPrices crop={selectedCrop} state={farmerState} />
       </Section>
 
       <Section title="Where to sell" subtitle="Real mandi prices vs our forecast, and net profit by market">

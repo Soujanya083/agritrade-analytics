@@ -155,6 +155,9 @@ def iter_api_records(fetch_page: Callable[[int, int], dict], page_size: int = 10
             time.sleep(pause)
 
 
+from app.config import GOVT_API_HEADERS  # noqa: E402
+
+
 def make_api_fetcher(api_key: str, resource_id: str = DEFAULT_RESOURCE_ID, filters: dict | None = None, get=None):
     import requests
 
@@ -164,7 +167,7 @@ def make_api_fetcher(api_key: str, resource_id: str = DEFAULT_RESOURCE_ID, filte
         params = {"api-key": api_key, "format": "json", "offset": offset, "limit": limit}
         for field, value in (filters or {}).items():
             params[f"filters[{field}]"] = value
-        response = getter(API_URL.format(resource=resource_id), params=params, timeout=30)
+        response = getter(API_URL.format(resource=resource_id), params=params, timeout=30, headers=GOVT_API_HEADERS)
         response.raise_for_status()
         return response.json()
 
