@@ -22,7 +22,7 @@ test('shows the date, source, summary and every market row', () => {
 
 test('marks unusual markets instead of hiding them', () => {
   render(<TodayPricesView data={data} />);
-  expect(screen.getByText(/unusual/)).toBeInTheDocument();
+  expect(screen.getAllByText(/unusual/).length).toBeGreaterThan(1);   // the row marker and the note
   expect(screen.getByText(/left out of the summary/)).toBeInTheDocument();
 });
 
