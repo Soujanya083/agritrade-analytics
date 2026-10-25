@@ -1,4 +1,6 @@
 """Data provenance + its effect on the decision summary."""
+from datetime import date, timedelta
+
 import pandas as pd
 import pytest
 
@@ -82,7 +84,7 @@ def test_real_marketplace_data_is_not_capped(monkeypatch):
 def real_signal(beats=True, coverage=0.9, days=800, lower=25.0, last=22.0, point=26.0):
     forecast = [{"date": "d", "point": point, "lower": lower, "upper": point + 3}] * 14
     return {"commodity": "Onion", "scope": "Maharashtra", "result": {
-        "forecast": forecast, "lastObserved": {"date": "2025-01-01", "price": last},
+        "forecast": forecast, "lastObserved": {"date": (date.today() - timedelta(days=2)).isoformat(), "price": last},
         "champion": {"model": "drift_60", "label": "Drift (last 60 days)", "beatsNaive": beats, "reason": "beat naive"},
         "intervalCoverage": {"target": 0.9, "empirical": coverage, "origins": 12},
         "dataQuality": {"daysInSeries": days}}}
