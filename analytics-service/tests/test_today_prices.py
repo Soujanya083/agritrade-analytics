@@ -75,3 +75,68 @@ def test_normal_state_results_are_not_marked_as_fallback(monkeypatch):
     patch(monkeypatch, [rec("A", 1800), rec("B", 2200)])
     result = today_prices.get_today_prices("Onion", "Karnataka", today=TODAY)
     assert result["stateFallback"] is False and result["state"] == "Karnataka"
+
+
+def rec_v(market, modal, variety, state="Tamil Nadu"):
+    r = rec(market, modal, state=state)
+    r["variety"] = variety
+    return r
+
+
+def test_a_different_product_is_not_mixed_into_the_main_variety(monkeypatch):
+    big = [rec_v(f"Mandi{i}", 4000 + i * 100, "Onion Big") for i in range(6)]
+    green = [rec_v("GreenMkt", 10000, "Onion Green"), rec_v("GreenMkt2", 9500, "Onion Green")]
+    patch(monkeypatch, big + green)
+    result = today_prices.get_today_prices("Onion", "Tamil Nadu", today=TODAY)
+    assert result["variety"] == "Onion Big" and "most common variety" in result["varietyNote"]
+    assert result["summary"]["highPerKg"] < 50                # spring-onion prices are not in the summary
+    assert {v["label"] for v in result["varieties"]} == {"Onion Big", "Onion Green"}
+    green_view = today_prices.get_today_prices("Onion", "Tamil Nadu", today=TODAY, variety="onion green")
+    assert green_view["variety"] == "Onion Green" and green_view["summary"]["marketsReported"] == 2
+
+
+def test_an_unknown_variety_is_an_honest_error(monkeypatch):
+    patch(monkeypatch, [rec_v("A", 2000, "Local"), rec_v("B", 2100, "Local")])
+    assert "No Onion records of variety" in today_prices.get_today_prices("Onion", None, today=TODAY, variety="Imaginary")["error"]
+
+
+def test_farmers_direct_sale_markets_are_flagged_and_kept_out_of_the_summary(monkeypatch):
+    rows = [rec_v("Lasalgaon", 2000, "Local"), rec_v("Pimpalgaon", 2200, "Local"), rec_v("Vellore", 2100, "Local"),
+            rec_v("Katpadi(Uzhavar Sandhai )", 6000, "Local")]
+    patch(monkeypatch, rows)
+    result = today_prices.get_today_prices("Onion", None, today=TODAY)
+    assert result["retailStyleMarkets"] == 1 and result["summary"]["highPerKg"] == 22.0
+    flagged = [r for r in result["rows"] if r["retailStyle"]]
+    assert [r["market"] for r in flagged] == ["Katpadi(Uzhavar Sandhai )"]
+
+
+def test_the_other_spelling_of_a_state_is_tried_when_the_first_has_no_records(monkeypatch):
+    asked = []
+
+    def fake(commodity, state=None, limit=200):
+        asked.append(state)
+        if state == "Orissa":
+            return {"commodity": commodity, "records": [rec("A", 1800, state="Orissa"), rec("B", 2200, state="Orissa")], "source": "live"}
+        return {"error": "No mandi price records found - live API: the API answered but has no records for this commodity/state today; and no cached snapshot"}
+    monkeypatch.setattr(mandi_comparison, "fetch_mandi_prices", fake)
+    result = today_prices.get_today_prices("Onion", "Odisha", today=TODAY)
+    assert asked == ["Odisha", "Orissa"] and result["stateFallback"] is False and result["summary"]["marketsReported"] == 2
+
+
+def rec_d(market, modal, district):
+    r = rec(market, modal, state="Karnataka")
+    r["district"] = district
+    return r
+
+
+def test_a_karnataka_district_is_shown_first_under_its_old_or_new_name(monkeypatch):
+    patch(monkeypatch, [rec_d("Mysore APMC", 2000, "Mysore"), rec_d("Mandya APMC", 2100, "Mandya"), rec_d("Hunsur", 2200, "Mysuru"), rec_d("Bidar", 1900, "Bidar")])
+    result = today_prices.get_today_prices("Onion", "Karnataka", today=TODAY, district="Mysuru")
+    assert {r["market"] for r in result["rows"]} == {"Mysore APMC", "Hunsur"} and result["districtFallback"] is False
+
+
+def test_a_district_with_no_records_falls_back_to_the_wider_area_and_says_so(monkeypatch):
+    patch(monkeypatch, [rec_d("Mandya APMC", 2100, "Mandya"), rec_d("Bidar", 1900, "Bidar")])
+    result = today_prices.get_today_prices("Onion", "Karnataka", today=TODAY, district="Udupi")
+    assert result["districtFallback"] is True and len(result["rows"]) == 2
+    assert "no records for Udupi district today" in result["note"]

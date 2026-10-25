@@ -62,3 +62,14 @@ test('warns about synthetic marketplace data when the forecast is not from real 
     summary={{ ...summary, dataProvenance: { syntheticPercent: 92, message: 'Most marketplace records are synthetic demo data.' } }} />);
   expect(screen.getByText(/Most marketplace records are synthetic demo data/)).toBeInTheDocument();
 });
+
+test("shows today's live mandi price, and says the forecast is withheld when its history is too old", () => {
+  render(<DecisionSummaryCard crop="Onion" quantityKg={500}
+    summary={{ ...summary, predictedPrice: null, predictedPriceModel: null,
+      forecastUnavailableReason: 'The real mandi price history ends on 2025-06-11 (500 days ago).',
+      todayMandiPrice: { pricePerKg: 41.5, asOf: '2026-10-24', source: 'live', marketsCompared: 30 } }} />);
+  expect(screen.getByText('₹41.5/kg')).toBeInTheDocument();
+  expect(screen.getByText(/as of 2026-10-24/)).toBeInTheDocument();
+  expect(screen.getByText(/Forecast withheld/)).toBeInTheDocument();
+  expect(screen.getByText(/ends on 2025-06-11/)).toBeInTheDocument();
+});

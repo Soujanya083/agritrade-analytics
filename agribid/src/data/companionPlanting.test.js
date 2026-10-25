@@ -151,7 +151,7 @@ describe('claims that were corrected', () => {
 
 describe('claims that were removed (no reliable source found)', () => {
   const removed = [['onion', 'carrot'], ['onion', 'beans'], ['onion', 'peas'], ['garlic', 'peas'], ['garlic', 'beans'], ['cucumber', 'potato'],
-    ['cabbage', 'dill'], ['cotton', 'green gram'], ['sugarcane', 'onion'], ['brinjal', 'beans'], ['tomato', 'basil'], ['potato', 'beans'],
+    ['cabbage', 'dill'], ['cotton', 'green gram'], ['sugarcane', 'potato'], ['brinjal', 'beans'], ['tomato', 'basil'], ['potato', 'beans'],
     ['maize', 'pumpkin'], ['chilli', 'basil'], ['okra', 'cucumber'], ['carrot', 'radish'], ['cabbage', 'tomato'], ['mango', 'ginger']];
   removed.forEach(([a, b]) => {
     test(`${a} + ${b} is not recommended or condemned: insufficient evidence`, () => {
@@ -224,10 +224,10 @@ describe('alternatives are always available and sourced', () => {
     expect(alternativesFor(findCrop('Tomato')).verified.map((v) => v.partner)).toEqual(['French or African marigold (Tagetes)']);
     expect(alternativesFor(findCrop('Mango')).verified).toEqual([]);
   });
-  test('the documented number of pairings matches the data: 7 supported, 6 potential, 2 unsuitable', () => {
+  test('the documented number of pairings matches the data: 10 supported, 11 potential, 2 unsuitable', () => {
     const count = (status) => PAIRS.filter((p) => p.status === status).length;
-    expect(PAIRS).toHaveLength(15);
-    expect([count('supported'), count('potential'), count('unsuitable')]).toEqual([7, 6, 2]);
+    expect(PAIRS).toHaveLength(23);
+    expect([count('supported'), count('potential'), count('unsuitable')]).toEqual([10, 11, 2]);
   });
   test('only a minority of crops have a verified pairing, which is the honest picture', () => {
     const withPairs = CROPS.filter((c) => pairsFor(c.id).all.length > 0).length;
@@ -265,5 +265,27 @@ describe('search and filters', () => {
     expect(findCrop('toor dal').name).toBe('Pigeon Pea');
     expect(findCrop('nope')).toBeNull();
     expect(findCrop('')).toBeNull();
+  });
+});
+
+
+describe('pairings added after a second research round (2026-10-24)', () => {
+  test('sugarcane + onion was removed earlier for lack of a source and is back only with real sources', () => {
+    const r = checkPair('sugarcane', 'onion');
+    expect(r.verdict).toBe('potential');
+    expect(r.pair.sources).toContain('sugarcaneOnionTnau');
+  });
+  test('lentil, which had no pairing, now has researched ones with risks listed', () => {
+    ['wheat', 'mustard'].forEach((partner) => {
+      const r = checkPair('lentil', partner);
+      expect(r.verdict).toBe('supported');
+      expect(r.pair.risks.length).toBeGreaterThan(0);
+    });
+    expect(pairsFor('lentil').all.length).toBeGreaterThanOrEqual(2);
+  });
+  test('finger millet + pigeonpea is potential because the evidence is mixed, and the old caution is shown', () => {
+    const r = checkPair('finger-millet', 'pigeon-pea');
+    expect(r.verdict).toBe('potential');
+    expect(r.pair.risks.join(' ')).toMatch(/1980/);
   });
 });

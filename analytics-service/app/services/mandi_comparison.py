@@ -34,7 +34,7 @@ BASE_URL = "https://api.data.gov.in/resource"
 # dashboard fast and stays well inside the API's rate limits. Not tied to
 # the marketplace data version (it is external data).
 @ttl_cache(seconds=900, data_aware=False)
-def fetch_mandi_prices(commodity: str, state: str = None, limit: int = 20) -> dict:
+def _fetch_one_name(commodity: str, state: str = None, limit: int = 20) -> dict:
     """Fetches recent real mandi prices for a commodity from data.gov.in.
     Falls back to a cached snapshot of real government data if the live
     call fails (network block, timeout, government server downtime) -
@@ -100,6 +100,24 @@ def fetch_mandi_prices(commodity: str, state: str = None, limit: int = 20) -> di
             "commodity/state."
         )
     }
+
+
+def fetch_mandi_prices(commodity: str, state: str = None, limit: int = 20) -> dict:
+    """Live prices (or the saved snapshot) for a crop, trying the feed's own names for it when the plain name has
+    no records. Stops at the first name with live records; a timeout or rejected key is returned as is, because a
+    different name cannot fix it."""
+    from app.services.market import commodity_names
+
+    fallback, last = None, {}
+    for name in commodity_names.variants(commodity):
+        last = _fetch_one_name(name, state, limit)
+        if "error" not in last and last.get("source") == "live":
+            return last
+        if "error" in last and "no records for this commodity/state" not in last["error"]:
+            return last
+        if "error" not in last and fallback is None:
+            fallback = last
+    return fallback or last
 
 
 def compare_with_prediction(crop_name: str, predicted_price: float, state: str = None) -> dict:

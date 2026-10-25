@@ -89,6 +89,7 @@ const MAX_CACHE_ENTRIES = 500;
 function createCropImageResolver({
   apiKey, fetchImpl = globalThis.fetch, now = Date.now, timeoutMs = 4000, logger = console,
   useWikipedia = false, wikiFetchImpl = globalThis.fetch,
+  overrides = {},
 } = {}) {
   const cache = new Map(); // key -> { value, expires }
   const inflight = new Map();
@@ -113,8 +114,8 @@ function createCropImageResolver({
     }
   }
 
-  async function wikipediaLookup(cropName) {
-    for (const title of wikiTitles(cropName)) {
+  async function wikipediaLookup(cropName, titles = wikiTitles(cropName)) {
+    for (const title of titles) {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
       try {
@@ -163,7 +164,21 @@ function createCropImageResolver({
     return null;
   }
 
+  // A crop's photo can be chosen by hand in server/data/cropPhotoOverrides.json (see docs/CROP_PHOTOS.md):
+  // { "potato": { "url": "https://...", "credit": "..." } } or { "potato": { "wikipediaTitle": "Some article" } }
+  async function overrideLookup(cropName) {
+    const choice = overrides[norm(cropName)];
+    if (!choice) return null;
+    if (typeof choice.url === 'string' && /^https:\/\//i.test(choice.url)) {
+      return { url: choice.url, credit: choice.credit || 'Photo chosen by the marketplace', sourceUrl: choice.sourceUrl || null };
+    }
+    if (choice.wikipediaTitle && useWikipedia) return wikipediaLookup(cropName, [String(choice.wikipediaTitle)]);
+    return null;
+  }
+
   async function lookup(cropName, category) {
+    const chosen = await overrideLookup(cropName);
+    if (chosen) return chosen;
     let found = null;
     if (apiKey) {
       try {
@@ -179,7 +194,7 @@ function createCropImageResolver({
 
   // Resolves to { url, credit, sourceUrl } or null. Never throws, never blocks listing a crop.
   async function resolveCropImage(cropName, category) {
-    if ((!apiKey && !useWikipedia) || !norm(cropName)) return null;
+    if ((!apiKey && !useWikipedia && !Object.keys(overrides).length) || !norm(cropName)) return null;
     const key = `${norm(cropName)}|${normCategory(category) || ''}`;
     const cached = cache.get(key);
     if (cached && cached.expires > now()) return cached.value;

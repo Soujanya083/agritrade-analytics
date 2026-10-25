@@ -8,6 +8,7 @@
     "dev": "node server.js",
     "test": "jest --runInBand",
     "backfill-images": "node scripts/backfillCropImages.js",
+    "delete-listing": "node scripts/deleteListing.js",
     "test:unit": "jest --runInBand test/validators.test.js test/security.test.js test/imageValidation.test.js test/cropImages.test.js"
   },
   "keywords": [],

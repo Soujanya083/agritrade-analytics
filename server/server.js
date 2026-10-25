@@ -104,7 +104,10 @@ const requireOwnerOf = (paramName) => (req, res, next) => {
 // All the logic (category-aware queries, relevance checks, caching) lives in
 // services/cropImages.js. Returns { url, credit, sourceUrl } or null.
 // Real crop photos: Pexels when a key is set, and always the keyless Wikipedia fallback (set CROP_PHOTO_WIKIPEDIA=false to turn it off).
+let cropPhotoOverrides = {};
+try { cropPhotoOverrides = require('./data/cropPhotoOverrides.json'); } catch (e) { /* no overrides file: fine */ }
 const { resolveCropImage } = createCropImageResolver({
+  overrides: cropPhotoOverrides,
   apiKey: process.env.PEXELS_API_KEY,
   // never reach out to Wikipedia from automated tests
   useWikipedia: process.env.CROP_PHOTO_WIKIPEDIA !== 'false' && !process.env.JEST_WORKER_ID,

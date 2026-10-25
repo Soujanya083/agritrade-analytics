@@ -29,6 +29,21 @@ Code: `agribid/src/data/companionPairs.js` (pairings), `companionSources.js` (re
 | Tomato + potato | unsuitable | Share late blight (extension: NDSU, UMass, eXtension, UW) | Risk highest in cool, wet weather |
 | Maize + tomato | unsuitable (conditional) | Same pest, Helicoverpa zea (USU, Illinois, Missouri extension) | Corn can act as a trap crop while silking; species differs in India; no Indian source reviewed |
 
+## Second research round (2026-10-24): 8 pairings added
+Found by searching for Indian field trials and reading the abstracts; each figure shown is in the claim ledger as verified. The registry now has **23 pairings: 10 supported, 11 potential, 2 unsuitable**.
+
+| Pairing | Status | Evidence (abstract level) |
+|---|---|---|
+| Wheat + lentil | supported | Himalayan trial: 2:1 and 1:1 rows beat sole wheat, land equivalent ratio 1.19 at 2:1; central India sowing-pattern trials |
+| Lentil + mustard | supported | Bihar plateau: ratio 1.54 for the best arrangement, but grain yield of both crops fell in most arrangements; West Bengal and Delhi trials |
+| Maize + potato | supported | Kanpur: best of the winter-maize intercrops, all ratios above 1; Shimla: maize needed about half the usual nitrogen, potato its full dose |
+| Sugarcane + garlic | potential | One Pusa (Bihar) experiment: ratio 1.30 with recommended fertilizer for both crops |
+| Sugarcane + onion | potential | Tamil Nadu trial with small (aggregatum) onion in wide-row cane; plus ICAR Indian Farming |
+| Sugarcane + green gram / black gram | potential | One Karnal (Haryana) series plus demonstrations: ratio above 1 for every legume tested |
+| Finger millet + pigeonpea | potential (mixed) | Ratio 1.37 at the best row arrangement, but legumes depressed finger millet in West Bengal and a 1980 Karnataka review found traditional ragi intercrops often did not pay more |
+
+Not added because a source could not be found or the evidence was not yet read: cotton with legumes, maize with cowpea or groundnut, tomato with onion. These stay "insufficient evidence".
+
 ## Evidence rules (enforced by tests)
 A pairing's status is **derived from its registered sources**, not chosen by hand (`agribid/src/data/companionEvidence.js`; `companionEvidence.test.js` fails if the stored status differs from the derived one):
 
@@ -66,7 +81,7 @@ Checked on 2026-10-24 against abstracts or results text:
 - **Evidence labels:** the old crop-level "backed by field trials" label is replaced by a per-pair status with sources.
 
 ## What was removed (no reliable source found)
-Onion-carrot, onion/garlic with peas or beans ("stunting"), cucumber-potato, cabbage/cauliflower with dill or marigold, cotton with green gram / black gram / cowpea, sugarcane with onion / garlic / potato / mustard, brinjal with beans / spinach / marigold, okra with cucumber / chilli / basil, chilli with basil / onion / carrot, tomato with basil / onion, potato with beans / cabbage / maize, maize with pumpkin / cowpea, carrot with radish / peas, peas with radish / maize, spinach with peas / radish / cabbage, mango with turmeric / ginger / pigeonpea, banana, citrus, grapes and papaya companions, and the "avoid" lists such as fennel, heavy climbers and dense banana planting. All of these now read as **insufficient evidence**. That does not mean they are harmful: it means this tool cannot recommend them.
+Onion-carrot, onion/garlic with peas or beans ("stunting"), cucumber-potato, cabbage/cauliflower with dill or marigold, cotton with green gram / black gram / cowpea, sugarcane with potato / mustard (sugarcane with onion, garlic and legumes were re-researched and added on 2026-10-24), brinjal with beans / spinach / marigold, okra with cucumber / chilli / basil, chilli with basil / onion / carrot, tomato with basil / onion, potato with beans / cabbage / maize, maize with pumpkin / cowpea, carrot with radish / peas, peas with radish / maize, spinach with peas / radish / cabbage, mango with turmeric / ginger / pigeonpea, banana, citrus, grapes and papaya companions, and the "avoid" lists such as fennel, heavy climbers and dense banana planting. All of these now read as **insufficient evidence**. That does not mean they are harmful: it means this tool cannot recommend them.
 
 ## Catalog (verified counts)
 Fruits 29, Grains and field crops 30, Vegetables 31, Leafy crops and herbs 26: **116 unique crops**, each with name, category, botanical family and an icon. Names and aliases are unique; categories were fixed (spinach and fenugreek are Leafy; the old catalog had no leafy category and treated cotton, sugarcane and pulses inconsistently). "Typical season" is shown only where well established and always with the caveat that it varies by region.
@@ -75,7 +90,7 @@ Fruits 29, Grains and field crops 30, Vegetables 31, Leafy crops and herbs 26: *
 - Sources were found and read through search results and abstracts; they were not all read in full. Numbers such as land equivalent ratios are quoted only where an abstract or summary stated them.
 - Several sources are on ResearchGate or publisher pages that may block automated checks: run `node agribid/scripts/checkSourceLinks.mjs` and open any "blocked" link manually.
 - Most evidence is for specific crops, seasons and regions. Soil, climate and variety change outcomes, which is why every pairing shows its conditions.
-- Only 15 pairings across 116 crops are covered: **7 supported, 6 potential, 2 unsuitable**. That is deliberate: the tab prefers few verified pairings over many unsupported ones.
+- Only 15 pairings across 116 crops are covered: **10 supported, 11 potential, 2 unsuitable**. That is deliberate: the tab prefers few verified pairings over many unsupported ones.
 - The 27 "peer-reviewed" sources share one label: journal standing (indexing, impact) has not been assessed. Check the journal before relying on a single paper.
 - Many sources are not from India (push-pull is East African; marigold and the corn-tomato pest conflict come from non-Indian sources). Each card says whether its evidence is Indian.
 - Pairings are for the crop combination only; they say nothing about your soil, season or variety. Confirm with your local agriculture office (KVK).
