@@ -57,8 +57,12 @@ export default function DecisionSummaryCard({ summary, loading, error, crop, qua
           value={summary.predictedPrice != null ? rupee(summary.predictedPrice, '/kg') : '-'}
           hint={summary.predictedPriceModel
             ? `${summary.predictedPriceRange ? `90% range ${rupee(summary.predictedPriceRange.lower)}–${rupee(summary.predictedPriceRange.upper)} · ` : ''}${summary.predictedPriceSource === 'agmarknet_real' ? '📈 Real mandi data · ' : ''}Model: ${summary.predictedPriceModel}`
-            : 'No price history yet'}
+            : (summary.forecastUnavailableReason ? 'Forecast withheld: the price history behind it is too old' : 'No price history yet')}
         />
+        {summary.todayMandiPrice && (
+          <Stat icon="🧺" label="Today's mandi price (median)" value={rupee(summary.todayMandiPrice.pricePerKg, '/kg')}
+            hint={`${summary.todayMandiPrice.asOf ? `as of ${summary.todayMandiPrice.asOf} · ` : ''}${summary.todayMandiPrice.marketsCompared} markets${summary.todayMandiPrice.source === 'live' ? ' · live' : ''}`} />
+        )}
         <Stat icon={DEMAND_ICON[summary.demandLevel] || '❔'} label="Demand" value={summary.demandLevel} hint={summary.opportunityScore != null ? `Opportunity score ${summary.opportunityScore}` : undefined} />
         <Stat icon="📍" label="Best market" value={summary.bestMarket || '-'} hint={summary.bestMarketState ? `${summary.bestMarketDistrict}, ${summary.bestMarketState} · ${rupee(summary.bestMarketModalPricePerQuintal, '/quintal')}` : undefined} />
         {hasTotals && <Stat icon="💵" label="Expected revenue" value={rupee(summary.expectedRevenue)} hint="At the best market's modal price" />}
@@ -70,6 +74,9 @@ export default function DecisionSummaryCard({ summary, loading, error, crop, qua
 
       <details style={{ marginTop: '14px' }}>
         <summary style={{ cursor: 'pointer', fontWeight: 600 }}>Why this confidence level, and what to keep in mind</summary>
+        {summary.forecastUnavailableReason && (
+          <p style={{ fontSize: '12px', color: '#8a6d00', background: '#fff8e1', borderRadius: 8, padding: '6px 10px' }}>ℹ️ {summary.forecastUnavailableReason}</p>
+        )}
         <ul style={{ fontSize: '13px', color: '#444', paddingLeft: '20px' }}>
           {(summary.confidence?.reasons || []).map((r) => <li key={r}>{r}</li>)}
         </ul>

@@ -250,9 +250,11 @@ def get_today_prices_endpoint(
     commodity: str = Query(..., min_length=1, max_length=80),
     state: str | None = Query(None, max_length=60),
     limit: int = Query(200, ge=1, le=500),
+    variety: str | None = Query(None, max_length=60),
+    district: str | None = Query(None, max_length=60),
 ):
     """Today's mandi prices, market by market (live from data.gov.in; says clearly when the data is old)."""
-    return ok_or_http_error(today_prices.get_today_prices(commodity, state, limit))
+    return ok_or_http_error(today_prices.get_today_prices(commodity, state, limit, variety=variety, district=district))
 
 
 @router.get("/mandi-compare")

@@ -101,6 +101,19 @@ def get_dashboard_summary() -> dict:
     }
 
 
+STALE_REAL_FORECAST_DAYS = 45   # a forecast learned from history older than this does not describe today
+
+
+def _history_age_days(real, today=None):
+    """Days between the last real observation and today (None if unknown)."""
+    from datetime import date
+    try:
+        last = date.fromisoformat(str(real["result"]["lastObserved"]["date"])[:10])
+    except (KeyError, TypeError, ValueError):
+        return None
+    return ((today or date.today()) - last).days
+
+
 def _real_market_signal(crop_name, farmer_state):
     """
     Forecast from REAL imported AGMARKNET history for this crop, or None when
@@ -265,6 +278,19 @@ def get_crop_decision_summary(crop_name: str, farmer_state: str = None, quantity
     market_rec = get_market_recommendation(crop_name, farmer_state, quantity_kg)
 
     real = _real_market_signal(crop_name, farmer_state)
+    stale_history = None
+    if real:
+        age = _history_age_days(real)
+        if age is not None and age > STALE_REAL_FORECAST_DAYS:
+            # Do NOT present a forecast learned from old data as a forecast for today.
+            stale_history = {
+                "commodity": real["commodity"], "scope": real["scope"],
+                "lastDate": real["result"]["lastObserved"]["date"], "ageDays": age,
+                "message": (f"The real mandi price history for {real['commodity']} ends on "
+                            f"{str(real['result']['lastObserved']['date'])[:10]} ({age} days ago), so a forecast from it would "
+                            "describe that date, not today. No price forecast is shown."),
+            }
+            real = None
 
     if real is None and forecast is None and "error" in market_rec and demand_level == "Unknown":
         return {"error": f"No marketplace or mandi data found for crop '{crop_name}'."}
@@ -274,6 +300,10 @@ def get_crop_decision_summary(crop_name: str, farmer_state: str = None, quantity
     price_range = None
     real_confidence = None
     marketplace_price = predicted_price
+    if stale_history:
+        predicted_price = None
+        model_name = None
+        price_source = "unavailable_stale_history"
     if real:
         point = real["result"]["forecast"][min(6, len(real["result"]["forecast"]) - 1)]
         predicted_price = round(point["point"], 2)
@@ -290,7 +320,9 @@ def get_crop_decision_summary(crop_name: str, farmer_state: str = None, quantity
         "predictedPriceModel": model_name,
         "predictedPriceSource": price_source,           # agmarknet_real | marketplace_listings
         "predictedPriceRange": price_range,
-        "marketplacePredictedPrice": marketplace_price if real else None,
+        "marketplacePredictedPrice": marketplace_price if (real or stale_history) else None,
+        "forecastUnavailableReason": stale_history["message"] if stale_history else None,
+        "staleHistory": stale_history,
         "dataProvenance": provenance,
         "realMarket": None if not real else {
             "commodity": real["commodity"], "scope": real["scope"],
@@ -303,8 +335,9 @@ def get_crop_decision_summary(crop_name: str, farmer_state: str = None, quantity
         "demandLevel": demand_level,
         "opportunityScore": opportunity_score,
         "quantityKg": quantity_kg,
-        "confidence": real_confidence or _cap_for_synthetic(
-            _confidence(history_points, model_name, beats_naive), provenance),
+        "confidence": real_confidence or (
+            {"level": "Low", "reasons": [stale_history["message"], "Today's prices below are live; the forecast is withheld."]}
+            if stale_history else _cap_for_synthetic(_confidence(history_points, model_name, beats_naive), provenance)),
         "limitations": [
             ("Price forecast is learned from real AGMARKNET mandi history (" + real["scope"] + "), not from this marketplace's listings."
              if real else
@@ -322,6 +355,14 @@ def get_crop_decision_summary(crop_name: str, farmer_state: str = None, quantity
             "recommendation": sell_wait["recommendation"],
             "reason": sell_wait["reason"],
             "horizonDays": sell_wait["horizonDays"],
+        }
+
+    if stale_history:
+        summary["timing"] = {
+            "recommendation": "No reliable forecast",
+            "reason": "The price history behind the forecast is too old to say where prices are heading from today. Use today's prices below.",
+            "horizonDays": 7,
+            "basis": "stale_history",
         }
 
     # With real AGMARKNET history the timing signal comes from THAT forecast: only
@@ -358,6 +399,13 @@ def get_crop_decision_summary(crop_name: str, farmer_state: str = None, quantity
         summary["actionText"] = "Not enough market data available yet to recommend where to sell."
         summary["marketRecommendationError"] = market_rec["error"]
         return summary
+
+    if market_rec.get("medianModalPricePerKg") is not None:
+        summary["todayMandiPrice"] = {
+            "pricePerKg": market_rec["medianModalPricePerKg"], "asOf": market_rec.get("dataAsOf"),
+            "source": market_rec.get("source"), "marketsCompared": market_rec.get("marketsCompared"),
+            "retailStyleMarketsLeftOut": market_rec.get("retailStyleMarketsLeftOut", 0),
+        }
 
     best = market_rec["recommendedMarket"]
     net_per_quintal = best["expectedNetProfitPerQuintal"]

@@ -75,9 +75,9 @@ describe('every number shown to users is traceable to a verified claim', () => {
       expect(pair.sources).toContain(c.source);
     });
   });
-  test('the maize + soybean figure and two wheat + chickpea figures were checked; one wheat + chickpea figure is pending', () => {
+  test('every verified figure is listed, and the one wheat + chickpea figure that could not be confirmed is still pending', () => {
     const verified = CLAIMS.filter((c) => c.status === 'verified').map((c) => c.id).sort();
-    expect(verified).toEqual(['maize-soybean-ler', 'wheat-chickpea-bangladesh', 'wheat-chickpea-nsw']);
+    expect(verified).toEqual(['lentil-mustard-bihar', 'maize-soybean-ler', 'ragi-pigeonpea-krishikosh', 'sugarcane-garlic-pusa', 'wheat-chickpea-bangladesh', 'wheat-chickpea-nsw', 'wheat-lentil-hawalbagh']);
     expect(claimsFor(PAIRS.find((p) => label(p) === 'wheat+chickpea'))).toHaveLength(3);
   });
 });

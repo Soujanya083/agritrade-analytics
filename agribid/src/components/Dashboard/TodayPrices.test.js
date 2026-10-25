@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { TodayPricesView } from './TodayPrices';
 
 const data = {
@@ -36,4 +36,27 @@ test('old data is never presented as today', () => {
 test('says so when it shows all-India prices because the farmer\'s state has no records today', () => {
   render(<TodayPricesView data={{ ...data, stateFallback: true, requestedState: 'Karnataka' }} />);
   expect(screen.getByText(/No records for Karnataka today, so this shows all-India prices/)).toBeInTheDocument();
+});
+
+test('offers the varieties and reports the one picked, instead of mixing different products', () => {
+  const varied = { ...data, variety: 'Onion Big', varietyNote: 'Showing the most common variety (Onion Big).',
+    varieties: [{ variety: 'onion big', label: 'Onion Big', markets: 6, medianPerKg: 41 }, { variety: 'onion green', label: 'Onion Green', markets: 2, medianPerKg: 98 }] };
+  const picked = jest.fn();
+  render(<TodayPricesView data={varied} onPickVariety={picked} />);
+  expect(screen.getByText(/Showing the most common variety/)).toBeInTheDocument();
+  fireEvent.click(screen.getByText(/Onion Green · 2/));
+  expect(picked).toHaveBeenCalledWith('Onion Green');
+  fireEvent.click(screen.getByText('All'));
+  expect(picked).toHaveBeenCalledWith(null);
+});
+
+test("labels farmers' direct-sale markets", () => {
+  const retail = { ...data, rows: [{ ...data.rows[0], market: 'Katpadi(Uzhavar Sandhai )', retailStyle: true, unusual: false }] };
+  render(<TodayPricesView data={retail} />);
+  expect(screen.getByText(/farmers' direct-sale market/)).toBeInTheDocument();
+});
+
+test('says so when the farmer\'s district has no records today', () => {
+  render(<TodayPricesView data={{ ...data, districtFallback: true, requestedDistrict: 'Udupi' }} />);
+  expect(screen.getByText(/No records for Udupi district today/)).toBeInTheDocument();
 });

@@ -157,3 +157,39 @@ def test_error_only_when_nothing_at_all_can_be_computed(monkeypatch):
     monkeypatch.setattr(recommendation, "recommend_crops", lambda location=None, top_n=5: [])
     s = dashboard_summary.get_crop_decision_summary("Ghost", None, None)
     assert "error" in s
+
+
+# ------------------------------------------------------ stale history is never shown as a forecast for today
+def fake_real(last_date):
+    point = {"point": 14.0, "lower": 10.3, "upper": 17.7}
+    return {"commodity": "Onion", "scope": "All India", "result": {
+        "forecast": [point] * 7, "lastObserved": {"date": last_date, "price": 14.0},
+        "champion": {"label": "Naive (last price)", "beatsNaive": False, "reason": "none beat naive"},
+        "intervalCoverage": {"empirical": None}, "dataQuality": {"daysInSeries": 126}}}
+
+
+def test_a_forecast_from_old_history_is_withheld_and_the_reason_is_shown(monkeypatch):
+    patch_services(monkeypatch)
+    monkeypatch.setattr(dashboard_summary, "_real_market_signal", lambda crop, state: fake_real("2025-06-11"))
+    s = dashboard_summary.get_crop_decision_summary("Onion", "Tamil Nadu", 500)
+    assert s["predictedPrice"] is None and s["predictedPriceModel"] is None
+    assert s["predictedPriceSource"] == "unavailable_stale_history"
+    assert s["staleHistory"]["lastDate"] == "2025-06-11" and "No price forecast is shown" in s["forecastUnavailableReason"]
+    assert s["timing"]["recommendation"] == "No reliable forecast"
+    assert s["confidence"]["level"] == "Low" and "platformForecast" not in s
+    assert s["marketplacePredictedPrice"] is not None          # still available as a labelled comparison
+
+
+def test_recent_history_still_gives_a_real_forecast(monkeypatch):
+    from datetime import date, timedelta
+    patch_services(monkeypatch)
+    recent = (date.today() - timedelta(days=3)).isoformat()
+    monkeypatch.setattr(dashboard_summary, "_real_market_signal", lambda crop, state: fake_real(recent))
+    s = dashboard_summary.get_crop_decision_summary("Onion", "Tamil Nadu", 500)
+    assert s["predictedPrice"] == 14.0 and s["predictedPriceSource"] == "agmarknet_real" and s["staleHistory"] is None
+
+
+def test_todays_mandi_price_is_shown_when_the_market_data_has_a_median(monkeypatch):
+    patch_services(monkeypatch, market={**MARKET, "medianModalPricePerKg": 41.5, "dataAsOf": "2026-10-24", "marketsCompared": 30})
+    s = dashboard_summary.get_crop_decision_summary("Onion", "Tamil Nadu", 500)
+    assert s["todayMandiPrice"]["pricePerKg"] == 41.5 and s["todayMandiPrice"]["asOf"] == "2026-10-24"

@@ -24,8 +24,13 @@ fact. If real logistics-cost data becomes available later, only the
 constants below need to change - the ranking logic does not.
 """
 import pandas as pd
+from statistics import median
 
 from app.services.mandi_comparison import fetch_mandi_prices
+from app.services.market.market_kinds import dominant_variety, is_retail_style_market, variety_key
+from app.services.states import same_state
+
+VARIETY_GAP_RATIO = 1.5   # a variety priced this far from the main one is a different product for ranking purposes
 
 # ---- Disclosed assumptions (₹ per quintal unless noted) ----
 TRANSPORT_COST_SAME_STATE = 80       # short-haul, within farmer's own state
@@ -85,9 +90,24 @@ def _imported_market_records(crop_name: str):
 
 def _transport_cost(record_state: str, farmer_state: str) -> tuple[float, str]:
     """Two-tier flat-rate transport cost. Returns (cost, tier_label)."""
-    if farmer_state and record_state and record_state.strip().lower() == farmer_state.strip().lower():
+    if same_state(record_state, farmer_state):
         return TRANSPORT_COST_SAME_STATE, "same_state"
     return TRANSPORT_COST_OTHER_STATE, "other_state"
+
+
+def _latest_arrival_date(records):
+    """Newest arrival_date (dd/mm/yyyy) among live records, as yyyy-mm-dd, or None."""
+    from datetime import datetime
+    dates = []
+    for r in records:
+        text = r.get("arrival_date") or r.get("Arrival_Date")
+        for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
+            try:
+                dates.append(datetime.strptime(str(text).strip(), fmt).date())
+                break
+            except ValueError:
+                continue
+    return max(dates).isoformat() if dates else None
 
 
 def get_market_recommendation(
@@ -110,6 +130,35 @@ def get_market_recommendation(
 
     records = mandi_data["records"]
     ranked = []
+
+    # Compare like with like: when one variety is the clear majority and the others are priced very differently
+    # (e.g. "Onion Green" next to onion bulbs), keep only that variety. Farmers' direct-sale markets are not
+    # realistic places to sell a wholesale lot, so they are left out of the ranking (and counted).
+    main_variety = dominant_variety([r.get("variety") for r in records])
+    if main_variety:
+        def _price(x):
+            try:
+                return float(x.get("modal_price"))
+            except (TypeError, ValueError):
+                return None
+        main_prices = [_price(x) for x in records if variety_key(x.get("variety")) == main_variety and _price(x)]
+        if main_prices:
+            mid = median(main_prices)
+            # keep the main variety, plus any other variety priced like it; drop the ones priced very differently
+            records = [x for x in records
+                       if variety_key(x.get("variety")) == main_variety
+                       or (_price(x) and mid / VARIETY_GAP_RATIO <= _price(x) <= mid * VARIETY_GAP_RATIO)]
+    retail_style_excluded = 0
+    wholesale_records = []
+    for r in records:
+        if is_retail_style_market(r.get("market") or r.get("Market")):
+            retail_style_excluded += 1
+        else:
+            wholesale_records.append(r)
+    if wholesale_records:   # if EVERY market is retail-style, rank them rather than say nothing
+        records = wholesale_records
+    else:
+        retail_style_excluded = 0
 
     for r in records:
         try:
@@ -167,6 +216,9 @@ def get_market_recommendation(
         "recommendedMarket": best,
         "rankedMarkets": ranked,
         "source": mandi_data.get("source"),
-        "dataAsOf": mandi_data.get("dataAsOf"),
+        "dataAsOf": mandi_data.get("dataAsOf") or _latest_arrival_date(records),
         "marketsCompared": len(ranked),
+        "medianModalPricePerKg": round(median(e["modalPricePerQuintal"] for e in ranked) / 100, 2),
+        "retailStyleMarketsLeftOut": retail_style_excluded,
+        "variety": main_variety,
     }

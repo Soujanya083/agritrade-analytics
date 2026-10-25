@@ -8,13 +8,16 @@ import TodayPrices from './TodayPrices';
 import { analytics, describeError, isNoDataError } from '../../api/analyticsClient';
 import { useAnalytics } from '../../api/useAnalytics';
 import RealMarketSection, { ProvenanceBanner } from './RealMarketSection';
+import { CROPS as CATALOG_CROPS } from '../../data/companionPlanting';
+import { INDIAN_STATES } from '../../data/indianStates';
+import { KARNATAKA_DISTRICTS } from '../../data/karnatakaDistricts';
 
 // Page layout (top to bottom): 1) pick crop/state/quantity, 2) "What this
 // means for you" summary, 3) detail sections collapsed by default, 4) assistant.
 // Previously ~11 charts/tables rendered at once with the chatbot first.
 
 const FALLBACK_CROPS = ['Wheat', 'Rice', 'Tomato', 'Onion', 'Potato'];
-const STATE_OPTIONS = ['Tamil Nadu', 'Karnataka', 'Maharashtra', 'Punjab', 'Keralam'];
+const STATE_OPTIONS = INDIAN_STATES;
 
 const cardStyle = { background: '#fff', borderRadius: '12px', padding: '16px', marginBottom: '16px' };
 const thStyle = { textAlign: 'left', padding: '8px', borderBottom: '2px solid #eee', fontSize: '13px', color: '#555' };
@@ -72,6 +75,7 @@ const inr = (v) => `₹${Number(v || 0).toLocaleString('en-IN', { maximumFractio
 const AnalyticsPanel = () => {
   const [selectedCrop, setSelectedCrop] = useState('');
   const [farmerState, setFarmerState] = useState('Maharashtra');
+  const [farmerDistrict, setFarmerDistrict] = useState('');
   const [quantityInput, setQuantityInput] = useState(500);
   const quantityKg = useDebounced(Number(quantityInput) > 0 ? Number(quantityInput) : null);
 
@@ -84,13 +88,18 @@ const AnalyticsPanel = () => {
   useEffect(() => {
     if (!selectedCrop && cropOptions.length) setSelectedCrop(cropOptions[0]);
   }, [cropOptions, selectedCrop]);
+  // Every crop in the catalog can be looked up for TODAY'S live mandi prices; the marketplace charts below only
+  // exist for crops that farmers have actually listed here.
+  const marketplaceSet = useMemo(() => new Set(cropOptions.map((c) => c.toLowerCase())), [cropOptions]);
+  const moreCrops = useMemo(() => CATALOG_CROPS.map((c) => c.name).filter((n) => !marketplaceSet.has(n.toLowerCase())).sort(), [marketplaceSet]);
+  const hasListings = marketplaceSet.has(String(selectedCrop).toLowerCase());
   const ready = Boolean(selectedCrop);
 
   const summary = useAnalytics((signal) => analytics.get('/decision-summary', { cropName: selectedCrop, farmerState, quantityKg }, { signal }), [selectedCrop, farmerState, quantityKg], { enabled: ready });
-  const trend = useAnalytics((signal) => analytics.get('/price-trend', { cropName: selectedCrop }, { signal }), [selectedCrop], { enabled: ready });
-  const price = useAnalytics((signal) => analytics.get('/price-prediction', { cropName: selectedCrop, daysAhead: 14 }, { signal }), [selectedCrop], { enabled: ready });
-  const demand = useAnalytics((signal) => analytics.get('/demand-forecast', { cropName: selectedCrop, daysAhead: 14 }, { signal }), [selectedCrop], { enabled: ready });
-  const backtest = useAnalytics((signal) => analytics.get('/backtest/price', { cropName: selectedCrop, testDays: 7 }, { signal }), [selectedCrop], { enabled: ready });
+  const trend = useAnalytics((signal) => analytics.get('/price-trend', { cropName: selectedCrop }, { signal }), [selectedCrop], { enabled: ready && hasListings });
+  const price = useAnalytics((signal) => analytics.get('/price-prediction', { cropName: selectedCrop, daysAhead: 14 }, { signal }), [selectedCrop], { enabled: ready && hasListings });
+  const demand = useAnalytics((signal) => analytics.get('/demand-forecast', { cropName: selectedCrop, daysAhead: 14 }, { signal }), [selectedCrop], { enabled: ready && hasListings });
+  const backtest = useAnalytics((signal) => analytics.get('/backtest/price', { cropName: selectedCrop, testDays: 7 }, { signal }), [selectedCrop], { enabled: ready && hasListings });
   const mandi = useAnalytics((signal) => analytics.get('/mandi-compare', { cropName: selectedCrop, state: farmerState }, { signal }), [selectedCrop, farmerState], { enabled: ready });
   const market = useAnalytics((signal) => analytics.get('/market-recommendation', { cropName: selectedCrop, farmerState, quantityKg }, { signal }), [selectedCrop, farmerState, quantityKg], { enabled: ready });
 
@@ -136,7 +145,12 @@ const AnalyticsPanel = () => {
       <div style={{ ...cardStyle, display: 'flex', gap: '14px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <label style={{ display: 'flex', flexDirection: 'column', fontSize: '13px', gap: '4px' }}>Crop
           <select value={selectedCrop} onChange={(e) => setSelectedCrop(e.target.value)} disabled={!cropOptions.length}>
-            {cropOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+            <optgroup label="Crops listed on this marketplace">
+              {cropOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+            </optgroup>
+            <optgroup label="More crops (live mandi prices only)">
+              {moreCrops.map((c) => <option key={c} value={c}>{c}</option>)}
+            </optgroup>
           </select>
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', fontSize: '13px', gap: '4px' }}>Your state
@@ -144,6 +158,14 @@ const AnalyticsPanel = () => {
             {STATE_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
         </label>
+        {farmerState === 'Karnataka' && (
+          <label style={{ display: 'flex', flexDirection: 'column', fontSize: '13px', gap: '4px' }}>Your district
+            <select value={farmerDistrict} onChange={(e) => setFarmerDistrict(e.target.value)}>
+              <option value="">All districts</option>
+              {KARNATAKA_DISTRICTS.map((d) => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </label>
+        )}
         <label style={{ display: 'flex', flexDirection: 'column', fontSize: '13px', gap: '4px' }}>Quantity (kg)
           <input type="number" min="1" max="1000000" value={quantityInput} onChange={(e) => setQuantityInput(e.target.value)} style={{ width: '110px' }} />
         </label>
@@ -160,9 +182,13 @@ const AnalyticsPanel = () => {
         />
       )}
 
+      {ready && !hasListings && (
+        <p style={noteStyle}>No farmer has listed {selectedCrop} on this marketplace yet, so only live mandi prices are shown for it.</p>
+      )}
+
       <RealMarketSection crop={selectedCrop} state={farmerState} />
 
-      <Section title="Price & demand forecast (marketplace listings)" subtitle="Where the price and demand are heading" defaultOpen>
+      {hasListings && <Section title="Price & demand forecast (marketplace listings)" subtitle="Where the price and demand are heading" defaultOpen>
         <Async state={price} empty={priceChart.length === 0 ? 'No price history for this crop yet.' : null}>
           <ResponsiveContainer width="100%" height={280}>
             <LineChart data={priceChart}>
@@ -183,9 +209,9 @@ const AnalyticsPanel = () => {
             </LineChart>
           </ResponsiveContainer>
         </Async>
-      </Section>
+      </Section>}
 
-      <Section title="How accurate is the price model?" subtitle="Backtest against simple baselines">
+      {hasListings && <Section title="How accurate is the price model?" subtitle="Backtest against simple baselines">
         <Async state={backtest} empty={modelChart.length === 0 ? 'Not enough history to test the model.' : null}>
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={modelChart}>
@@ -198,10 +224,10 @@ const AnalyticsPanel = () => {
             {backtest.data?.bestModelBeatsNaiveBaseline === false ? 'It did NOT beat the naive baseline, so treat forecasts with caution.' : backtest.data?.bestModelBeatsNaiveBaseline ? 'It beat the naive baseline.' : ''}
           </p>
         </Async>
-      </Section>
+      </Section>}
 
       <Section title="Today's mandi prices" subtitle="What this crop is selling for right now, market by market" defaultOpen>
-        <TodayPrices crop={selectedCrop} state={farmerState} />
+        <TodayPrices crop={selectedCrop} state={farmerState} district={farmerState === 'Karnataka' ? farmerDistrict : ''} />
       </Section>
 
       <Section title="Where to sell" subtitle="Real mandi prices vs our forecast, and net profit by market">

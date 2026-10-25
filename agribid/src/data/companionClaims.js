@@ -45,4 +45,24 @@ export const CLAIMS = [
     text: 'Earlier note: pigeonpea grain yield fell by up to about 38% in one comparison.',
     note: 'The source of this figure was not recorded. Find which of the four cited sources states it.',
   },
+  {
+    id: 'wheat-lentil-hawalbagh', pair: 'wheat+lentil', figures: ['1.19'], status: 'verified', checkedOn: '2026-10-24',
+    source: 'wheatLentilHawalbagh', locator: 'abstract',
+    text: 'Hawalbagh (Uttarakhand) rabi trials 2008-10: wheat + lentil in 2:1 rows gave the highest wheat-equivalent yield and a land-equivalent ratio of 1.19, followed by 1:1 rows.',
+  },
+  {
+    id: 'lentil-mustard-bihar', pair: 'lentil+mustard', figures: ['1.54'], status: 'verified', checkedOn: '2026-10-24',
+    source: 'lentilMustardBihar', locator: 'abstract and results table',
+    text: 'Bihar plateau 1995-98: 100% lentil + 25% mustard in a 5:1 row ratio gave a land-equivalent ratio of 1.54; grain yield of both crops decreased in the other arrangements.',
+  },
+  {
+    id: 'sugarcane-garlic-pusa', pair: 'sugarcane+garlic', figures: ['1.30'], status: 'verified', checkedOn: '2026-10-24',
+    source: 'sugarcaneGarlicPusa', locator: 'abstract',
+    text: 'Pusa, Bihar 2010-13: sugarcane + garlic (1:2) with the recommended fertilizer for both crops gave a land-equivalent ratio of 1.30; with four irrigations the ratio was 1.36.',
+  },
+  {
+    id: 'ragi-pigeonpea-krishikosh', pair: 'finger-millet+pigeon-pea', figures: ['1.37'], status: 'verified', checkedOn: '2026-10-24',
+    source: 'ragiPigeonpeaKrishikosh', locator: 'abstract',
+    text: 'Maximum land-equivalent ratio (1.37) was obtained with transplanted finger millet + pigeonpea in 6:2 rows; pigeonpea yield was lower in the intercrop.',
+  },
 ];

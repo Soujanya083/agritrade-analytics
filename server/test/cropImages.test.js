@@ -194,3 +194,37 @@ describe('keyless Wikipedia fallback', () => {
     expect((await resolveCropImage('Onion', 'Vegetables')).credit).toContain('Wikipedia');
   });
 });
+
+
+describe('hand-picked photo overrides', () => {
+  test('a chosen https photo wins over any lookup and needs no network or key', async () => {
+    const fetchImpl = jest.fn();
+    const { resolveCropImage } = createCropImageResolver({
+      fetchImpl, overrides: { potato: { url: 'https://upload.wikimedia.org/x/Potatoes.jpg', credit: 'Photo: someone, CC BY-SA' } },
+    });
+    const result = await resolveCropImage('Potato', 'Vegetables');
+    expect(result.url).toBe('https://upload.wikimedia.org/x/Potatoes.jpg');
+    expect(result.credit).toBe('Photo: someone, CC BY-SA');
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  test('a non-https or javascript: address is ignored, never stored', async () => {
+    const { resolveCropImage } = createCropImageResolver({ overrides: { potato: { url: 'javascript:alert(1)' } } });
+    expect(await resolveCropImage('Potato', 'Vegetables')).toBeNull();
+    const http = createCropImageResolver({ overrides: { potato: { url: 'http://insecure.example/p.jpg' } } });
+    expect(await http.resolveCropImage('Potato', 'Vegetables')).toBeNull();
+  });
+
+  test('a Wikipedia article title can be chosen instead of an address', async () => {
+    const wikiFetchImpl = jest.fn(async () => ({ ok: true, status: 200, json: async () => ({ query: { pages: { 1: { title: 'Russet Burbank', thumbnail: { source: 'https://upload.wikimedia.org/x/Russet.jpg', width: 640, height: 480 } } } } }) }));
+    const { resolveCropImage } = createCropImageResolver({ useWikipedia: true, wikiFetchImpl, overrides: { potato: { wikipediaTitle: 'Russet Burbank' } } });
+    const result = await resolveCropImage('Potato', 'Vegetables');
+    expect(result.url).toBe('https://upload.wikimedia.org/x/Russet.jpg');
+    expect(wikiFetchImpl.mock.calls[0][0]).toContain('titles=Russet%20Burbank');
+  });
+
+  test('other crops are unaffected by an override for one crop', async () => {
+    const { resolveCropImage } = createCropImageResolver({ overrides: { potato: { url: 'https://x/p.jpg' } } });
+    expect(await resolveCropImage('Onion', 'Vegetables')).toBeNull();
+  });
+});
