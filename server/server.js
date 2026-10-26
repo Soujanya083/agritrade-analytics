@@ -11,6 +11,7 @@ const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 const {
   isValidObjectId, isPositiveNumber, isNonEmptyString, isValidPhone, isValidLength, isReasonableDate, sanitizeString,
+  toCropName,
 } = require('./validators');
 const {
   isProduction, resolveJwtSecret, buildCorsOptions, generateOtp, safeEqual, shouldExposeOtp,
@@ -474,7 +475,7 @@ app.post('/api/crops', authenticateToken, async (req, res) => {
 
     const crop = await Crop.create({
       farmerId,
-      cropName: sanitizeString(cropName).replace(/\s+/g, ' '),
+      cropName: toCropName(sanitizeString(cropName)),
       variety: sanitizeString(variety),
       quantityKg: Number(quantityKg),
       location: sanitizeString(location),
@@ -489,6 +490,32 @@ app.post('/api/crops', authenticateToken, async (req, res) => {
     res.status(201).json({ message: 'Crop uploaded successfully', crop });
   } catch (error) {
     return sendServerError(res, error, 'Failed to upload crop');
+  }
+});
+
+// A farmer can withdraw their OWN listing while it is still open (no accepted deal). The delete itself is
+// atomic on { owner, status: 'open' }, so a deal accepted at the same moment can never lose its listing.
+app.delete('/api/crops/:cropId', authenticateToken, async (req, res) => {
+  try {
+    const { cropId } = req.params;
+    if (!isValidObjectId(cropId)) return res.status(400).json({ message: 'Invalid crop ID' });
+    if (req.user.role !== 'Farmer') return res.status(403).json({ message: 'Only farmer accounts can delete listings' });
+    const existing = await Crop.findById(cropId).lean();
+    if (!existing) return res.status(404).json({ message: 'Crop not found' });
+    if (String(existing.farmerId) !== String(req.user.id)) {
+      return res.status(403).json({ message: 'You can only delete your own listings' });
+    }
+    const crop = await Crop.findOneAndDelete({ _id: cropId, farmerId: req.user.id, status: 'open' });
+    if (!crop) return res.status(409).json({ message: 'A listing with an accepted deal cannot be deleted' });
+
+    const activeBids = await Bid.find({ cropId, status: 'active' }).select('buyerId').lean();
+    await Bid.deleteMany({ cropId });
+    await Promise.all(activeBids.map((bid) => createNotification(
+      bid.buyerId, `The ${crop.cropName} listing you bid on was withdrawn by the farmer.`, 'bid',
+    )));
+    return res.status(200).json({ message: 'Listing deleted', deletedBids: activeBids.length });
+  } catch (error) {
+    return sendServerError(res, error, 'Failed to delete listing');
   }
 });
 

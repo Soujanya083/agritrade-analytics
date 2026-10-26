@@ -93,3 +93,25 @@ def test_backtest_skips_cases_with_no_matching_transaction():
 
     assert "error" in result
     assert result["skippedInsufficientData"] == 1
+
+def _run(crops, bids, transactions, price_series):
+    with patch.object(db, "load_crops", return_value=crops), \
+         patch.object(db, "load_bids", return_value=bids), \
+         patch.object(db, "load_transactions", return_value=transactions), \
+         patch.object(db, "_prepare_series", return_value=price_series):
+        return db.backtest_decisions(horizon_days=5)
+
+
+def test_the_accepted_bids_per_kg_price_is_used_when_the_deal_records_which_bid_won():
+    crops, bids, transactions, price_series = _build_mocked_scenario()
+    bids["_id"] = ["bidA", "bidB"]
+    transactions = pd.DataFrame([{"cropId": "crop1", "bidId": "bidB", "totalAmount": 999999}])  # total is irrelevant now
+    result = _run(crops, bids, transactions, price_series)
+    assert result["cases"][0]["actualHistoricalOutcome"] == 25.0
+
+
+def test_a_deal_total_stored_as_a_per_kg_figure_is_excluded_not_averaged_in():
+    crops, bids, transactions, price_series = _build_mocked_scenario()
+    transactions = pd.DataFrame([{"cropId": "crop1", "totalAmount": 25}])   # 25 / 100 kg = 0.25 per kg for a Rs 20 listing
+    result = _run(crops, bids, transactions, price_series)
+    assert "error" in result and result["skippedInconsistentSales"] == 1
