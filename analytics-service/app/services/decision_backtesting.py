@@ -44,6 +44,21 @@ def _first_bid_price(bids_df: pd.DataFrame, crop_id: str):
     return float(crop_bids.iloc[0]["amount"])
 
 
+INCONSISTENT_BELOW = 0.2   # a realised price under 0.2x the listing's base price, or over 5x, is a data error
+INCONSISTENT_ABOVE = 5.0
+
+
+def _realised_price_per_kg(tx, quantity, bids_df):
+    """What the farmer actually got per kg. The accepted bid's amount IS a per-kg price, so it is used when the
+    deal records which bid was accepted; otherwise the deal total divided by the quantity."""
+    bid_id = tx.get("bidId") if hasattr(tx, "get") else None
+    if bid_id is not None and "_id" in bids_df.columns:
+        match = bids_df[bids_df["_id"] == bid_id]
+        if not match.empty:
+            return float(match.iloc[0]["amount"])
+    return float(tx["totalAmount"]) / float(quantity)
+
+
 @ttl_cache(seconds=600)
 def backtest_decisions(horizon_days: int = DEFAULT_HORIZON_DAYS) -> dict:
     """
@@ -72,6 +87,7 @@ def backtest_decisions(horizon_days: int = DEFAULT_HORIZON_DAYS) -> dict:
 
     cases = []
     skipped_insufficient_data = 0
+    skipped_inconsistent = 0
     price_series_cache = {}
 
     for _, crop in completed.iterrows():
@@ -85,7 +101,11 @@ def backtest_decisions(horizon_days: int = DEFAULT_HORIZON_DAYS) -> dict:
             continue
 
         tx = tx_by_crop.loc[crop_id]
-        actual_price_per_kg = float(tx["totalAmount"]) / float(quantity)
+        actual_price_per_kg = _realised_price_per_kg(tx, quantity, bids)
+        base_price = float(crop["basePrice"]) if crop.get("basePrice") else None
+        if base_price and not (INCONSISTENT_BELOW * base_price <= actual_price_per_kg <= INCONSISTENT_ABOVE * base_price):
+            skipped_inconsistent += 1   # e.g. a deal total stored as a per-kg figure: cannot be compared fairly
+            continue
 
         first_bid = _first_bid_price(bids, crop_id)
         sell_immediately_price = first_bid if first_bid is not None else float(crop["basePrice"])
@@ -129,6 +149,7 @@ def backtest_decisions(horizon_days: int = DEFAULT_HORIZON_DAYS) -> dict:
             ),
             "completedSalesFound": len(completed),
             "skippedInsufficientData": skipped_insufficient_data,
+            "skippedInconsistentSales": skipped_inconsistent,
         }
 
     results_df = pd.DataFrame(cases)
@@ -141,6 +162,7 @@ def backtest_decisions(horizon_days: int = DEFAULT_HORIZON_DAYS) -> dict:
     summary = {
         "casesEvaluated": len(results_df),
         "skippedInsufficientData": skipped_insufficient_data,
+        "skippedInconsistentSales": skipped_inconsistent,
         "averageOutcome": {
             "sellImmediately": round(results_df["sellImmediatelyOutcome"].mean(), 2),
             "actualHistoricalOutcome": round(results_df["actualHistoricalOutcome"].mean(), 2),
@@ -161,7 +183,7 @@ def backtest_decisions(horizon_days: int = DEFAULT_HORIZON_DAYS) -> dict:
             f"market-wide price observed ~{horizon_days} days later, not an "
             "invented number. No transport, storage, or holding costs are "
             "assumed - this project doesn't have that data, and outcomes "
-            "reflect gross price per kg only."
+            "reflect gross price per kg only. Sales whose recorded price is implausible for the listing (under a fifth or over five times its base price) are excluded and counted."
         ),
         "summary": summary,
         "cases": cases,

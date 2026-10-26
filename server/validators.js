@@ -51,7 +51,15 @@ function sanitizeString(value) {
   return typeof value === 'string' ? value.trim() : value;
 }
 
+// One crop must never be counted twice because of capital letters or spacing:
+// "  rice " and "RICE" become "Rice"; "green   gram" becomes "Green Gram".
+function toCropName(value) {
+  if (typeof value !== 'string') return value;
+  return value.trim().replace(/\s+/g, ' ').toLowerCase().replace(/(^|[\s(\-/])([a-z])/g, (match, separator, letter) => separator + letter.toUpperCase());
+}
+
 module.exports = {
+  toCropName,
   isValidObjectId,
   isPositiveNumber,
   isNonEmptyString,

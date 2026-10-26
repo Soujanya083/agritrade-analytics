@@ -111,3 +111,18 @@ describe('sanitizeString', () => {
     expect(sanitizeString(42)).toBe(42);
   });
 });
+
+describe('toCropName', () => {
+  const { toCropName } = require('../validators');
+  test('one canonical spelling regardless of capitals and spacing', () => {
+    expect(toCropName('rice')).toBe('Rice');
+    expect(toCropName('  GREEN   gram ')).toBe('Green Gram');
+    expect(toCropName('bhindi(ladies finger)')).toBe('Bhindi(Ladies Finger)');
+    expect(toCropName('pigeon-pea')).toBe('Pigeon-Pea');
+    expect(toCropName("lady's finger")).toBe("Lady's Finger");
+  });
+  test('non-text input is returned untouched', () => {
+    expect(toCropName(undefined)).toBeUndefined();
+    expect(toCropName(42)).toBe(42);
+  });
+});

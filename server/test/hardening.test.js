@@ -100,6 +100,14 @@ describe('crop image handling', () => {
     cases.forEach(([cropName, category]) => expect(byName[cropName]).toBe(category));
   });
 
+  test('the crop name is tidied to one canonical spelling, so "rice" and "Rice" are one crop', async () => {
+    const { token } = await register('Farmer');
+    const res = await listCrop(token, { cropName: '  GREEN   gram ' });
+    expect(res.statusCode).toBe(201);
+    expect(res.body.crop.cropName).toBe('Green Gram');
+    expect((await listCrop(token, { cropName: 'rice' })).body.crop.cropName).toBe('Rice');
+  });
+
   test('a missing category defaults to Grains and messy spacing in the name is tidied', async () => {
     const { token } = await register('Farmer');
     const res = await listCrop(token, { cropName: '  Green   Chilli ', category: undefined });
@@ -201,5 +209,57 @@ describe('CORS', () => {
   test('reflects an origin when no allow-list is configured (dev default)', async () => {
     const res = await request(app).get('/api/health').set('Origin', 'http://localhost:3000');
     expect(res.headers['access-control-allow-origin']).toBe('http://localhost:3000');
+  });
+});
+
+
+describe('a farmer deleting their own listing', () => {
+  test('removes the open listing and its bids, and tells the bidders', async () => {
+    const farmer = await register('Farmer');
+    const buyer = await register('Buyer');
+    const crop = (await listCrop(farmer.token)).body.crop;
+    await request(app).post('/api/bids').set(auth(buyer.token)).send({ cropId: crop._id, amount: 45 });
+
+    const res = await request(app).delete(`/api/crops/${crop._id}`).set(auth(farmer.token));
+    expect(res.statusCode).toBe(200);
+    expect(res.body.deletedBids).toBe(1);
+    expect(await mongoose.model('Crop').findById(crop._id)).toBeNull();
+    expect(await mongoose.model('Bid').countDocuments({ cropId: crop._id })).toBe(0);
+    const note = await mongoose.model('Notification').findOne({ userId: buyer.userId, message: /withdrawn by the farmer/ });
+    expect(note).not.toBeNull();
+  });
+
+  test("another farmer cannot delete someone else's listing", async () => {
+    const owner = await register('Farmer');
+    const intruder = await register('Farmer');
+    const crop = (await listCrop(owner.token)).body.crop;
+    const res = await request(app).delete(`/api/crops/${crop._id}`).set(auth(intruder.token));
+    expect(res.statusCode).toBe(403);
+    expect(await mongoose.model('Crop').findById(crop._id)).not.toBeNull();
+  });
+
+  test('a buyer cannot delete listings, and a login is required', async () => {
+    const farmer = await register('Farmer');
+    const buyer = await register('Buyer');
+    const crop = (await listCrop(farmer.token)).body.crop;
+    expect((await request(app).delete(`/api/crops/${crop._id}`).set(auth(buyer.token))).statusCode).toBe(403);
+    expect((await request(app).delete(`/api/crops/${crop._id}`)).statusCode).toBe(401);
+  });
+
+  test('a listing with an accepted deal can never be deleted', async () => {
+    const farmer = await register('Farmer');
+    const buyer = await register('Buyer');
+    const crop = (await listCrop(farmer.token)).body.crop;
+    const bid = (await request(app).post('/api/bids').set(auth(buyer.token)).send({ cropId: crop._id, amount: 50 })).body.bid;
+    await request(app).post(`/api/bids/${bid._id}/accept`).set(auth(farmer.token));
+    const res = await request(app).delete(`/api/crops/${crop._id}`).set(auth(farmer.token));
+    expect(res.statusCode).toBe(409);
+    expect(await mongoose.model('Crop').findById(crop._id)).not.toBeNull();
+  });
+
+  test('an unknown or malformed id is a clean error', async () => {
+    const farmer = await register('Farmer');
+    expect((await request(app).delete('/api/crops/not-an-id').set(auth(farmer.token))).statusCode).toBe(400);
+    expect((await request(app).delete(`/api/crops/${new mongoose.Types.ObjectId()}`).set(auth(farmer.token))).statusCode).toBe(404);
   });
 });

@@ -9,6 +9,7 @@
     "test": "jest --runInBand",
     "backfill-images": "node scripts/backfillCropImages.js",
     "delete-listing": "node scripts/deleteListing.js",
+    "normalize-crop-names": "node scripts/normalizeCropNames.js",
     "test:unit": "jest --runInBand test/validators.test.js test/security.test.js test/imageValidation.test.js test/cropImages.test.js"
   },
   "keywords": [],

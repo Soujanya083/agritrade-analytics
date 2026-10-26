@@ -395,6 +395,17 @@ const DashboardPage = ({ user, onLogout, onNavigate }) => {
     }
   };
 
+  const deleteListing = async (item) => {
+    const ok = window.confirm(`Delete your ${item.cropName} listing? Any bids on it will be removed and the buyers will be told.`);
+    if (!ok) return;
+    try {
+      await fetchJson(`${API_BASE}/crops/${item._id}`, { method: 'DELETE' });
+      await loadData();
+    } catch (error) {
+      window.alert(error.message);
+    }
+  };
+
   const startUpiPayment = (transaction) => {
     setUpiModal({
       open: true,
@@ -1107,6 +1118,15 @@ const DashboardPage = ({ user, onLogout, onNavigate }) => {
                           onClick={() => placeBid(item)}
                         >
                           Place Bid
+                        </button>
+                      )}
+
+                      {isFarmer && item.status === 'open' && String(item.farmerId?._id || item.farmerId) === String(userId) && (
+                        <button
+                          className="bid-btn delete-btn"
+                          onClick={() => deleteListing(item)}
+                        >
+                          Delete my listing
                         </button>
                       )}
 

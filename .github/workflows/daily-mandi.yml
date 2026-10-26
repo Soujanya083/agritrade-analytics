@@ -1,0 +1,34 @@
+name: Daily mandi prices
+
+# Saves each day's government mandi prices for a few crops into your database, so the real price history keeps
+# growing past 2025-06-11 and forecasts can start again. Switched OFF until you set it up; see docs/DAILY_COLLECTOR.md.
+on:
+  schedule:
+    - cron: "30 13 * * *"   # 19:00 IST, after most markets have reported
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  collect:
+    name: Collect today's prices
+    runs-on: ubuntu-latest
+    if: ${{ vars.ENABLE_DAILY_MANDI == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install the few packages the importer needs
+        run: pip install pymongo==4.8.0 dnspython==2.6.1 pandas==2.2.2 numpy==1.26.4 requests==2.32.3 python-dotenv==1.0.1
+      - name: Import today's prices
+        working-directory: analytics-service
+        env:
+          MONGO_URI: ${{ secrets.MONGO_URI }}
+          DATAGOVIN_API_KEY: ${{ secrets.DATAGOVIN_API_KEY }}
+          DATAGOVIN_RESOURCE_ID: ${{ secrets.DATAGOVIN_RESOURCE_ID }}
+        run: |
+          for crop in Onion Potato Tomato Wheat; do
+            python scripts/import_mandi_prices.py api --commodity "$crop"
+          done

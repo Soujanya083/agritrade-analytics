@@ -7,7 +7,7 @@ Every listing shows, in this order: **the photo the farmer uploaded**, then a **
 2. Put it in `server/data/cropPhotoOverrides.json`, using the crop name in lower case:
 ```json
 {
-  "potato": { "url": "https://upload.wikimedia.org/.../Potatoes.jpg", "credit": "Photo: <author>, <licence>" }
+  "potato": { "url": "https://www.pexels.com/search/potatoes/", "credit": "Photo: <author>, <licence>" }
 }
 ```
 Or choose a different Wikipedia article's lead photo instead of an address: `"potato": { "wikipediaTitle": "<article title>" }`.
