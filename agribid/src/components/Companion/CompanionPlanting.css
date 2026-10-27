@@ -44,7 +44,9 @@
 .cp-none span { font-size:2.4rem; }
 
 /* detail */
-.cp-detail-wrap { position:sticky; top:12px; scroll-margin-top:12px; }
+/* The detail panel stays pinned while the page scrolls, but it can be taller than the screen (a crop with many
+   researched pairings). Give it its own height limit and scrollbar so every part can be reached. */
+.cp-detail-wrap { position:sticky; top:12px; scroll-margin-top:12px; max-height:calc(100vh - 24px); overflow-y:auto; overscroll-behavior:contain; border-radius:20px; scrollbar-width:thin; }
 .cp-detail { background:var(--cp-card); border:1px solid var(--cp-line); border-radius:20px; overflow:hidden; box-shadow:0 6px 20px rgba(0,0,0,.06); }
 .cp-detail > section, .cp-detail > .cp-layout, .cp-tip { margin:16px 18px; }
 .cp-banner { display:flex; align-items:center; gap:16px; padding:18px 20px; color:#1f2937; }
@@ -85,7 +87,7 @@
 @keyframes cp-pop { from { transform: scale(.96); opacity:0; } to { transform: scale(1); opacity:1; } }
 @media (max-width: 899px) {
   .cp-layout-grid { grid-template-columns:1fr; }
-  .cp-detail-wrap { position:static; }
+  .cp-detail-wrap { position:static; max-height:none; overflow-y:visible; }
   .cp-banner__emoji { font-size:3.2rem; }
 }
 @media (prefers-reduced-motion: reduce) {
