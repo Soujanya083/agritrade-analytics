@@ -166,10 +166,27 @@ function createCropImageResolver({
 
   // A crop's photo can be chosen by hand in server/data/cropPhotoOverrides.json (see docs/CROP_PHOTOS.md):
   // { "potato": { "url": "https://...", "credit": "..." } } or { "potato": { "wikipediaTitle": "Some article" } }
+  // A browser can only show a PICTURE FILE. A shop page, a search page or a stock-photo listing is a web page: it
+  // would never display, and it may not be yours to use. Credits must be real, not the template text.
+  function overrideProblem(choice) {
+    let url;
+    try { url = new URL(choice.url); } catch (e) { return 'the address is not valid'; }
+    if (url.protocol !== 'https:') return 'the address must start with https://';
+    if (/\/wiki\//i.test(url.pathname)) return 'this is the page ABOUT the photo; open the photo and copy the image address itself (it starts with https://upload.wikimedia.org)';
+    if (!/\.(jpe?g|png|webp)$/i.test(url.pathname)) return 'the address must point straight to a picture file (ending .jpg, .png or .webp), not to a web page';
+    if (typeof choice.credit === 'string' && /photographer name|licence\s*$/i.test(choice.credit.trim())) return 'the credit is still the template text: write the real author and licence';
+    return null;
+  }
+
   async function overrideLookup(cropName) {
     const choice = overrides[norm(cropName)];
     if (!choice) return null;
-    if (typeof choice.url === 'string' && /^https:\/\//i.test(choice.url)) {
+    if (choice.url !== undefined) {
+      const problem = overrideProblem(choice);
+      if (problem) {
+        logger.warn && logger.warn(`Photo override for "${cropName}" ignored: ${problem}`);
+        return null; // fall back to the automatic photo rather than store an address that cannot display
+      }
       return { url: choice.url, credit: choice.credit || 'Photo chosen by the marketplace', sourceUrl: choice.sourceUrl || null };
     }
     if (choice.wikipediaTitle && useWikipedia) return wikipediaLookup(cropName, [String(choice.wikipediaTitle)]);
