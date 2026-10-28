@@ -1,0 +1,21 @@
+== node --check (syntax) on every server JS file
+ok  server/services/imageValidation.js
+ok  server/services/cropImages.js
+ok  server/security.js
+ok  server/test/helpers/testMongo.js
+ok  server/test/security.test.js
+ok  server/test/imageValidation.test.js
+ok  server/test/hardening.test.js
+ok  server/test/validators.test.js
+ok  server/test/testMongo.test.js
+ok  server/test/api.test.js
+ok  server/test/cropImages.test.js
+ok  server/test/bid-race-condition.test.js
+ok  server/scripts/normalizeCropNames.js
+ok  server/scripts/deleteListing.js
+ok  server/scripts/backfillCropImages.js
+ok  server/server.js
+ok  server/validators.js
+
+== python compile of every .py
+compiled 113 python files, 0 failures

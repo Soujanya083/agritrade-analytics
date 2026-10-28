@@ -1,0 +1,7 @@
+raw rows: 7,227; planted problems: {'unit_errors': 6, 'duplicates': 2, 'missing_price': 3, 'retail_markets': 0}; planted 29-day Onion gap
+1. prepare: rows 7,227, 2023-06-06 .. 2025-06-11, out-of-order rows: 0
+   Onion gaps >3d detected: 1 (planted 1), missing days 29 (planted 29)
+2. normalise: kept 7,216; dropped {'rowsIn': 7227, 'dropped': {'modal price missing or not positive': 3, 'incoherent min/modal/max': 6, 'duplicate rows': 2}, 'rowsOut': 7216}
+3. series: default (latest stretch) 341 days; longest stretch 367 days; cutAtLongGap=True
+4. report generated: 66 lines, 4 figures; **Champion: Naive (last price).** No model was reliably better than assuming the price stays where it is. The best challenger (Ridge on lagged returns
+5. - Market spread over the last 30 days: 1.7% across 4 markets; highest Lasalgaon (Niphad) (Rs 13.64/kg), lowest Bangalore APMC (Rs 13.41/kg).

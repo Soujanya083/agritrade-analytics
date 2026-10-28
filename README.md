@@ -39,7 +39,7 @@ pip install -r requirements.txt && uvicorn app.main:app --reload --port 8000   #
 cd agribid && npm install && npm start                                    # :3000
 # Optional: demo data (SYNTHETIC - see limitations) then crop photos
 python analytics-service/seed_data.py          # needs MONGO_URI
-cd server && PEXELS_API_KEY=... npm run backfill-images
+cd server && npm run backfill-images      # real crop photos (Wikipedia by default; PEXELS_API_KEY optional)
 ```
 
 Without any `.env`, local development works out of the box (both services share a public dev-only JWT secret). **Deployed instances refuse to start/serve without `JWT_SECRET`.**
@@ -53,7 +53,9 @@ Without any `.env`, local development works out of the box (both services share 
 | `CORS_ORIGINS` | server + analytics | Comma-separated frontend origins (empty = allow all, dev only) |
 | `TRUST_PROXY` | server | Proxy hops (default 1 when deployed) so rate limits are per user |
 | `EXPOSE_OTP_IN_RESPONSE` | server | `true` (default) = demo mode, OTP returned by the API; set `false` once a real SMS/email sender exists |
-| `PEXELS_API_KEY` | server | Real crop photos (free key). Without it, listings show a labelled icon |
+| `PEXELS_API_KEY` | server | Optional second photo source. Without it, crop photos come from Wikipedia (turn off with `CROP_PHOTO_WIKIPEDIA=false`); hand-picked photos: [docs/CROP_PHOTOS.md](docs/CROP_PHOTOS.md) |
+| `ANALYTICS_RATE_LIMIT_PER_MIN` | analytics | Requests per minute per signed-in user (default 240) |
+| `DATAGOVIN_API_KEY`, `DATAGOVIN_RESOURCE_ID` | analytics | Live mandi prices from data.gov.in; without them the app uses a labelled saved snapshot |
 | `RAZORPAY_KEY_ID/SECRET` | server | Online payments (otherwise manual UPI) |
 | `DATAGOVIN_API_KEY/RESOURCE_ID` | analytics | Live mandi prices (otherwise a small saved snapshot is used and labelled) |
 | `ANALYTICS_INTERNAL_API_KEY` | analytics | Optional key for trusted server-to-server callers (`X-Internal-Api-Key`) |
@@ -67,7 +69,8 @@ Without any `.env`, local development works out of the box (both services share 
 - **Authorization:** farmer/buyer identity comes from the token, never the request body; only the listing's farmer can accept a bid; only the transaction's buyer can pay/confirm delivery.
 - **Privacy:** marketplace-wide analytics (farmer revenue, buyer spend, anomaly flags) return **pseudonymous labels** (`User-a1b2c3`) with an `isYou` flag instead of user IDs. Analytics loaders exclude password hashes, OTPs and photos at the database.
 - **Uploads:** listing photos must be an `https` URL or a PNG/JPEG/WebP data URI ≤ 400 KB whose bytes match the claimed type; the browser shrinks photos first. Body limit 1 MB.
-- **Abuse limits:** global + login/signup/OTP rate limits (correct behind a proxy), delivery-OTP attempt cap, per-user cap on LLM-backed chatbot questions.
+- **Abuse limits:** global + login/signup/OTP rate limits (correct behind a proxy), a per-account cap on signup-OTP guesses (5, then the code is destroyed), delivery-OTP attempt cap, a per-user request limit on the analytics service, per-user cap on LLM-backed chatbot questions.
+- **Payments:** when Razorpay keys are configured the manual "I have paid" route is switched off; payments are then verified by signature. Without keys the manual UPI route is a **demo** that trusts the buyer.
 - **Concurrency:** accepting a bid atomically claims the crop (no double transactions); placing a bid is an atomic conditional update.
 - **Errors:** 500 responses never include internals; they are logged server-side.
 - **Known gaps:** see the limitations document (OTP demo mode, manual-UPI trust, token in `localStorage`).
@@ -121,7 +124,7 @@ Full methods, validation results and limits: [docs/DS_METHODOLOGY.md](docs/DS_ME
 | Backend (Jest) | `cd server && npm test` | downloads an in-memory MongoDB |
 | Frontend (Jest/RTL) | `cd agribid && npm test` | – |
 
-CI (`.github/workflows/ci.yml`) runs all three plus a production build on every push/PR. Exact counts and what was verified are in the final audit report.
+CI (`.github/workflows/ci.yml`) runs all three plus a production build on every push/PR. A weekly job checks the companion-planting source links, and an optional daily job saves live mandi prices (see [docs/DAILY_COLLECTOR.md](docs/DAILY_COLLECTOR.md)). **What was actually run in the final audit, what could not be run, and every open weakness are in [VALIDATION_REPORT.md](VALIDATION_REPORT.md); setup steps are in [SETUP.md](SETUP.md).** If the in-memory MongoDB cannot start on your PC, run the backend tests against a local MongoDB with `TEST_MONGO_URI=mongodb://localhost:27017/agribid_test` (the name must end in `_test`).
 
 ## Honest summary of what is real
 
