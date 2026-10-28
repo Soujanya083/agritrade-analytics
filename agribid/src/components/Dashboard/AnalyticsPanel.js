@@ -100,7 +100,7 @@ const AnalyticsPanel = () => {
   const price = useAnalytics((signal) => analytics.get('/price-prediction', { cropName: selectedCrop, daysAhead: 14 }, { signal }), [selectedCrop], { enabled: ready && hasListings });
   const demand = useAnalytics((signal) => analytics.get('/demand-forecast', { cropName: selectedCrop, daysAhead: 14 }, { signal }), [selectedCrop], { enabled: ready && hasListings });
   const backtest = useAnalytics((signal) => analytics.get('/backtest/price', { cropName: selectedCrop, testDays: 7 }, { signal }), [selectedCrop], { enabled: ready && hasListings });
-  const mandi = useAnalytics((signal) => analytics.get('/mandi-compare', { cropName: selectedCrop, state: farmerState }, { signal }), [selectedCrop, farmerState], { enabled: ready });
+  const mandi = useAnalytics((signal) => analytics.get('/mandi-compare', { cropName: selectedCrop, state: farmerState }, { signal }), [selectedCrop, farmerState], { enabled: ready && hasListings });
   const market = useAnalytics((signal) => analytics.get('/market-recommendation', { cropName: selectedCrop, farmerState, quantityKg }, { signal }), [selectedCrop, farmerState, quantityKg], { enabled: ready });
 
   const overview = (path, params) => useAnalytics((signal) => analytics.get(path, params, { signal }), []); // eslint-disable-line react-hooks/rules-of-hooks
@@ -231,8 +231,8 @@ const AnalyticsPanel = () => {
       </Section>
 
       <Section title="Where to sell" subtitle="Real mandi prices vs our forecast, and net profit by market">
-        <h4 style={{ marginTop: 0 }}>Our forecast vs real mandi price</h4>
-        <Async state={mandi}>
+        {hasListings && <h4 style={{ marginTop: 0 }}>Our forecast vs real mandi price</h4>}
+        {hasListings && <Async state={mandi}>
           {mandi.data && (
             <>
               <ResponsiveContainer width="100%" height={200}>
@@ -241,8 +241,8 @@ const AnalyticsPanel = () => {
               {mandi.data.interpretation && <p style={noteStyle}>{mandi.data.interpretation}</p>}
             </>
           )}
-        </Async>
-        <h4>Expected net profit per quintal, by market</h4>
+        </Async>}
+        <h4 style={hasListings ? undefined : { marginTop: 0 }}>Expected net profit per quintal, by market</h4>
         <Async state={market} empty={profitChart.length === 0 ? 'No market data for this crop.' : null}>
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={profitChart}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="market" /><YAxis /><Tooltip /><Bar dataKey="netProfit" fill="#00897b" /></BarChart>

@@ -71,3 +71,12 @@ def chatbot_rate_limit() -> tuple[int, int]:
         return int(os.getenv("CHATBOT_LLM_MAX_PER_WINDOW", "20")), int(os.getenv("CHATBOT_LLM_WINDOW_SECONDS", "600"))
     except ValueError:
         return 20, 600
+
+
+def rate_limit_per_minute() -> int:
+    """Requests per minute allowed for one signed-in user (ANALYTICS_RATE_LIMIT_PER_MIN, default 240).
+    A dashboard load fires about a dozen requests at once, so the default leaves plenty of room."""
+    try:
+        return max(1, int(os.getenv("ANALYTICS_RATE_LIMIT_PER_MIN", "240")))
+    except ValueError:
+        return 240

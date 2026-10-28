@@ -263,3 +263,50 @@ describe('a farmer deleting their own listing', () => {
     expect((await request(app).delete(`/api/crops/${new mongoose.Types.ObjectId()}`).set(auth(farmer.token))).statusCode).toBe(404);
   });
 });
+
+
+describe('verification OTP guessing is capped per account', () => {
+  const signup = async (n) => {
+    const email = `otpcap${n}@example.com`;
+    const res = await request(app).post('/api/signup').send({
+      role: 'Farmer', fullName: `Otp Cap ${n}`, email, phone: `97000${String(10000 + n)}`, location: 'Pune',
+      password: 'password123', confirmPassword: 'password123',
+    });
+    return { email, otp: res.body.otp };
+  };
+  const wrongCode = (otp) => (otp === '111111' ? '222222' : '111111');
+
+  test('five wrong codes destroy the OTP, even the right code is then refused until a new one is requested', async () => {
+    const { email, otp } = await signup(1);
+    for (let i = 0; i < 4; i += 1) {
+      expect((await request(app).post('/api/verify-otp').send({ email, otp: wrongCode(otp) })).statusCode).toBe(400);
+    }
+    expect((await request(app).post('/api/verify-otp').send({ email, otp: wrongCode(otp) })).statusCode).toBe(429);
+    const stale = await request(app).post('/api/verify-otp').send({ email, otp });
+    expect(stale.statusCode).toBe(400);
+    expect(stale.body.message).toMatch(/expired|request a new/i);
+
+    const resend = await request(app).post('/api/resend-otp').send({ email });
+    const fresh = await request(app).post('/api/verify-otp').send({ email, otp: resend.body.otp });
+    expect(fresh.statusCode).toBe(200);
+  });
+
+  test('a correct code within the limit still verifies and resets the counter', async () => {
+    const { email, otp } = await signup(2);
+    await request(app).post('/api/verify-otp').send({ email, otp: wrongCode(otp) });
+    expect((await request(app).post('/api/verify-otp').send({ email, otp })).statusCode).toBe(200);
+  });
+});
+
+describe('manual UPI confirmation cannot bypass online payment', () => {
+  test('is allowed in demo mode (no gateway configured)', async () => {
+    const farmer = await register('Farmer');
+    const buyer = await register('Buyer');
+    const crop = (await listCrop(farmer.token)).body.crop;
+    const bid = (await request(app).post('/api/bids').set(auth(buyer.token)).send({ cropId: crop._id, amount: 50 })).body.bid;
+    const accepted = await request(app).post(`/api/bids/${bid._id}/accept`).set(auth(farmer.token));
+    const transactionId = accepted.body.transaction._id;
+    const res = await request(app).post(`/api/transactions/${transactionId}/confirm-upi-payment`).set(auth(buyer.token));
+    expect(res.statusCode).toBe(200);
+  });
+});

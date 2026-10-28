@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
 from app.auth import Principal
-from app.deps import require_principal
+from app.deps import rate_limit, require_principal
 from app.http_errors import ApiError, ok_or_http_error
 from app.privacy import pseudonymize
 from app.services import (
@@ -54,7 +54,7 @@ from app.services.market import real_market
 router = APIRouter(
     prefix="/api/analytics",
     tags=["analytics"],
-    dependencies=[Depends(require_principal)],
+    dependencies=[Depends(require_principal), Depends(rate_limit)],
 )
 
 CropNameParam = Annotated[str, Query(min_length=1, max_length=80)]

@@ -35,6 +35,11 @@ def _isolated_environment(monkeypatch):
     from app.services import dashboard_summary
     monkeypatch.setattr(dashboard_summary, "_real_market_signal", lambda crop, state: None)
     monkeypatch.setattr(dashboard_summary, "_provenance", lambda: None)
+    try:   # the per-user rate limiter must not leak counts from one test into the next
+        from app import deps
+        deps._limiter._hits.clear()
+    except ImportError:
+        pass
     from app.services import market_recommendation
     monkeypatch.setattr(market_recommendation, "_imported_market_records", lambda crop: None)
     clear_cache()

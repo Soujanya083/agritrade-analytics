@@ -1,0 +1,92 @@
+tests/test_anomaly_benchmark.py: 8 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 8 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_anomaly_detection.py: 7 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 7 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_anomaly_normalisation.py: 3 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 3 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_api.py: 0 passed, 0 failed, 0 skipped/not-runnable, 1 import-error
+TOTAL: 0 passed, 0 failed, 0 skipped/not-runnable, 1 import errors
+[IMPORT-ERROR] tests/test_api.py
+ModuleNotFoundError: No module named 'fastapi'
+tests/test_arima_and_ensemble.py: 8 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 8 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_auth.py: 18 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 18 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_backtest_demand_model.py: 7 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 7 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_catalog.py: 6 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 6 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_chatbot.py: 39 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 39 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_commodity_names.py: 3 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 3 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_crop_recommendation_score.py: 5 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 5 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_dashboard_summary.py: 14 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 14 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_data_quality.py: 5 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 5 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_decision_backtesting.py: 5 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 5 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_decision_engine.py: 7 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 7 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_diagnostics.py: 11 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 11 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_districts.py: 3 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 3 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_eda_analysis.py: 4 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 4 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_error_classification.py: 25 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 25 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_feature_price_model.py: 8 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 8 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_forecast_caching.py: 5 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 5 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_forecast_lab.py: 41 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 41 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_kaggle_prepare.py: 6 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 6 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_leakage_and_intervals.py: 11 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 11 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_llm_client.py: 9 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 9 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_mandi_comparison_live.py: 4 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 4 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_mandi_data.py: 31 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 31 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_mandi_import.py: 18 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 18 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_mandi_snapshot.py: 5 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 5 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_market_kinds.py: 3 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 3 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_market_overview.py: 15 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 15 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_market_recommendation.py: 11 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 11 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_market_recommendation_filters.py: 5 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 5 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_market_recommendation_imported.py: 7 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 7 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_model_evaluation.py: 16 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 16 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_price_prediction.py: 5 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 5 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_privacy.py: 6 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 6 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_provenance.py: 11 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 11 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_rate_limit.py: 6 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 6 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_real_market_service.py: 34 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 34 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_report.py: 5 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 5 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_segmentation_quality.py: 10 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 10 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_states.py: 5 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 5 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_today_prices.py: 14 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 14 passed, 0 failed, 0 skipped/not-runnable, 0 import errors
+tests/test_ttl_cache.py: 11 passed, 0 failed, 0 skipped/not-runnable, 0 import-error
+TOTAL: 11 passed, 0 failed, 0 skipped/not-runnable, 0 import errors

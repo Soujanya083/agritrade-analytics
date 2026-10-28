@@ -70,6 +70,8 @@ try {
   process.exit(1);
 }
 
+const MAX_OTP_ATTEMPTS = 5;
+
 const signToken = (user) => jwt.sign(
   { id: user._id.toString(), role: user.role },
   JWT_SECRET,
@@ -141,6 +143,7 @@ const userSchema = new mongoose.Schema({
   isVerified: { type: Boolean, default: false },
   verificationOtp: { type: String, default: null },
   otpExpiresAt: { type: Date, default: null },
+  otpAttempts: { type: Number, default: 0 },
   password: { type: String, required: true },
 }, { timestamps: true });
 
@@ -283,6 +286,7 @@ app.post('/api/signup', authLimiter, async (req, res) => {
       isVerified: false,
       verificationOtp: otpCode,
       otpExpiresAt: new Date(Date.now() + otpExpiryMinutes * 60 * 1000),
+      otpAttempts: 0,
       password: hashedPassword,
     });
     res.status(201).json({
@@ -324,13 +328,22 @@ app.post('/api/verify-otp', authLimiter, async (req, res) => {
     if (!user.verificationOtp || !user.otpExpiresAt || user.otpExpiresAt < new Date()) {
       return res.status(400).json({ message: 'OTP has expired. Please request a new one.' });
     }
-    if (user.verificationOtp !== String(otp).trim()) {
+    // The IP limiter does not stop one account being attacked from many addresses, so each code also has a
+    // small number of tries: after MAX_OTP_ATTEMPTS wrong guesses it is destroyed and a new one must be requested.
+    if (!safeEqual(user.verificationOtp, String(otp).trim())) {
+      const attempts = (user.otpAttempts || 0) + 1;
+      if (attempts >= MAX_OTP_ATTEMPTS) {
+        await User.updateOne({ _id: user._id }, { $set: { verificationOtp: null, otpExpiresAt: null, otpAttempts: 0 } });
+        return res.status(429).json({ message: 'Too many wrong codes. Please request a new OTP.' });
+      }
+      await User.updateOne({ _id: user._id }, { $inc: { otpAttempts: 1 } });
       return res.status(400).json({ message: 'Invalid OTP' });
     }
 
     user.isVerified = true;
     user.verificationOtp = null;
     user.otpExpiresAt = null;
+    user.otpAttempts = 0;
     await user.save();
 
     res.status(200).json({ message: 'Account verified successfully' });
@@ -353,6 +366,7 @@ app.post('/api/resend-otp', authLimiter, async (req, res) => {
     const otpCode = generateOtp();
     user.verificationOtp = otpCode;
     user.otpExpiresAt = new Date(Date.now() + otpExpiryMinutes * 60 * 1000);
+    user.otpAttempts = 0;
     await user.save();
 
     res.status(200).json({
@@ -752,7 +766,12 @@ app.post('/api/transactions/:transactionId/confirm-upi-payment', authenticateTok
     if (transaction.status !== 'awaiting_payment') {
       return res.status(400).json({ message: 'Payment already completed for this transaction' });
     }
-    // Mark as paid (manual trust-based)
+    // The manual route trusts the buyer's word. Once real online payments are configured it must not be a way
+    // around them, so it is switched off and the buyer has to pay through Razorpay (verified by signature).
+    if (razorpay) {
+      return res.status(409).json({ message: 'Online payment is enabled: please pay through the payment gateway. Manual confirmation is disabled.' });
+    }
+    // Mark as paid (manual trust-based; demo mode only)
     transaction.status = 'payment_confirmed';
     transaction.paymentDate = new Date().toISOString().slice(0, 10);
     await transaction.save();

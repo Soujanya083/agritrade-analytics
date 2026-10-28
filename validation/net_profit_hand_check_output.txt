@@ -1,0 +1,4 @@
+B: code net/quintal 2220 vs hand 2220  OK
+A: code net/quintal 1890 vs hand 1890  OK
+C: code net/quintal 1820 vs hand 1820  OK
+recommended: B | total net for 500 kg: 11100.0 vs hand 11100

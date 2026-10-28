@@ -208,10 +208,38 @@ describe('hand-picked photo overrides', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  test('a web PAGE (shop, search or stock-photo listing) is ignored: only picture files can be shown', async () => {
+    const pages = [
+      'https://stock.adobe.com/search?k=onion+plant',
+      'https://www.greendna.in/products/organic-potato-offer',
+      'https://commons.wikimedia.org/wiki/File:Onions.jpg',
+    ];
+    for (const url of pages) {
+      const { resolveCropImage } = createCropImageResolver({ overrides: { onion: { url, credit: 'Photo: A. Person, CC BY-SA 4.0' } }, logger: silent });
+      expect(await resolveCropImage('Onion', 'Vegetables')).toBeNull();
+    }
+  });
+
+  test('a picture file with a query string is accepted', async () => {
+    const { resolveCropImage } = createCropImageResolver({ overrides: { onion: { url: 'https://upload.wikimedia.org/x/Onions.JPG?download', credit: 'Photo: A. Person, CC BY-SA 4.0' } } });
+    expect((await resolveCropImage('Onion', 'Vegetables')).url).toContain('Onions.JPG');
+  });
+
+  test('the template credit text is refused, so a made-up credit is never shown', async () => {
+    const { resolveCropImage } = createCropImageResolver({ overrides: { onion: { url: 'https://upload.wikimedia.org/x/Onions.jpg', credit: 'Photo: Photographer Name, licence' } }, logger: silent });
+    expect(await resolveCropImage('Onion', 'Vegetables')).toBeNull();
+  });
+
+  test('a rejected override falls back to the automatic photo', async () => {
+    const wikiFetchImpl = jest.fn(async () => ({ ok: true, status: 200, json: async () => ({ query: { pages: { 1: { title: 'Onion', thumbnail: { source: 'https://upload.wikimedia.org/x/Onion.jpg', width: 640, height: 480 } } } } }) }));
+    const { resolveCropImage } = createCropImageResolver({ useWikipedia: true, wikiFetchImpl, logger: silent, overrides: { onion: { url: 'https://stock.adobe.com/search?k=onion' } } });
+    expect((await resolveCropImage('Onion', 'Vegetables')).credit).toBe('Photo from Wikipedia (Onion)');
+  });
+
   test('a non-https or javascript: address is ignored, never stored', async () => {
-    const { resolveCropImage } = createCropImageResolver({ overrides: { potato: { url: 'javascript:alert(1)' } } });
+    const { resolveCropImage } = createCropImageResolver({ overrides: { potato: { url: 'javascript:alert(1)' } }, logger: silent });
     expect(await resolveCropImage('Potato', 'Vegetables')).toBeNull();
-    const http = createCropImageResolver({ overrides: { potato: { url: 'http://insecure.example/p.jpg' } } });
+    const http = createCropImageResolver({ overrides: { potato: { url: 'http://insecure.example/p.jpg' } }, logger: silent });
     expect(await http.resolveCropImage('Potato', 'Vegetables')).toBeNull();
   });
 
