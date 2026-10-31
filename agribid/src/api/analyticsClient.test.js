@@ -112,4 +112,22 @@ describe('describeError', () => {
     expect(describeError(e(500))).toMatch(/problem/i);
     expect(describeError(new Error('x'))).toMatch(/went wrong/i);
   });
+
+  test('after a 401 it renews the token through refreshToken() and retries once', async () => {
+    const calls = [];
+    const fetchImpl = jest.fn(async (url, init) => {
+      calls.push(init.headers.Authorization);
+      return init.headers.Authorization === 'Bearer fresh' ? reply(200, { ok: 1 }) : { ok: false, status: 401, json: async () => ({}) };
+    });
+    const client = createAnalyticsClient({ baseUrl: 'http://a', getToken: () => 'stale', refreshToken: async () => 'fresh', fetchImpl });
+    await client.get('/x');
+    expect(calls).toEqual(['Bearer stale', 'Bearer fresh']);
+  });
+
+  test('getToken may be async (the default asks the session module, which can refresh)', async () => {
+    const fetchImpl = jest.fn(async () => reply(200, { ok: 1 }));
+    const client = createAnalyticsClient({ baseUrl: 'http://a', getToken: async () => 'async-token', fetchImpl });
+    await client.get('/y');
+    expect(fetchImpl.mock.calls[0][1].headers.Authorization).toBe('Bearer async-token');
+  });
 });

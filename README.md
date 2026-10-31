@@ -129,3 +129,7 @@ CI (`.github/workflows/ci.yml`) runs all three plus a production build on every 
 ## Honest summary of what is real
 
 Real: auth, bidding, deals, the forecasting/backtesting/segmentation/anomaly code, SHAP, the hybrid chatbot, the mandi comparison (live with an API key). **Not real / needs setup:** OTP delivery (demo), payments verified only via Razorpay when configured (UPI is trust-based), the seeded marketplace data (synthetic), LLM answers (need a key), and the saved mandi snapshot (onion only). Details: [docs/LIMITATIONS_AND_VIVA.md](docs/LIMITATIONS_AND_VIVA.md).
+
+## Hardening round
+
+See [IMPROVEMENT_GUIDE.md](IMPROVEMENT_GUIDE.md) for the ten known weaknesses, what was fixed, what needs real users or time, and the step-by-step plan.

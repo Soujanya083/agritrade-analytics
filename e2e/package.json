@@ -1,0 +1,15 @@
+{
+  "name": "agritrade-e2e",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Browser end-to-end tests (Playwright) for the AgriTrade marketplace",
+  "scripts": {
+    "install:browsers": "playwright install --with-deps chromium",
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
+  }
+}

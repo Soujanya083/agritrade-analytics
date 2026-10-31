@@ -30,6 +30,11 @@ export default function DecisionSummaryCard({ summary, loading, error, crop, qua
   const conf = CONFIDENCE_STYLE[summary.confidence?.level] || CONFIDENCE_STYLE.Low;
   const hasTotals = summary.expectedRevenue != null;
   const net = summary.expectedNetProfit;
+  // Profit is shown as a RANGE (pessimistic -> best case), because the single number
+  // is an estimate built from assumed costs; absent for older API responses.
+  const bandQ = summary.netProfitBandPerQuintal;
+  const bandTotal = summary.netProfitBandTotal;
+  const bandHint = (b) => (b ? `Range ${rupee(b.conservative)} to ${rupee(b.optimistic)} (pessimistic to best case)` : undefined);
 
   return (
     <section style={card} aria-label="Decision summary">
@@ -66,9 +71,9 @@ export default function DecisionSummaryCard({ summary, loading, error, crop, qua
         <Stat icon={DEMAND_ICON[summary.demandLevel] || '❔'} label="Demand" value={summary.demandLevel} hint={summary.opportunityScore != null ? `Opportunity score ${summary.opportunityScore}` : undefined} />
         <Stat icon="📍" label="Best market" value={summary.bestMarket || '-'} hint={summary.bestMarketState ? `${summary.bestMarketDistrict}, ${summary.bestMarketState} · ${rupee(summary.bestMarketModalPricePerQuintal, '/quintal')}` : undefined} />
         {hasTotals && <Stat icon="💵" label="Expected revenue" value={rupee(summary.expectedRevenue)} hint="At the best market's modal price" />}
-        {hasTotals && <Stat icon="🚚" label="Expected cost" value={rupee(summary.expectedCost)} hint="Assumed transport + storage" />}
-        {hasTotals && <Stat icon="✅" label="Expected net profit" value={rupee(net)} tone={net > 0 ? 'good' : 'bad'} />}
-        {!hasTotals && summary.expectedNetProfitPerQuintal != null && <Stat icon="✅" label="Net profit per quintal" value={rupee(summary.expectedNetProfitPerQuintal)} hint="Enter a quantity for totals" tone={summary.expectedNetProfitPerQuintal > 0 ? 'good' : 'bad'} />}
+        {hasTotals && <Stat icon="🚚" label="Expected cost" value={rupee(summary.expectedCost)} hint={bandQ ? 'Assumed transport, storage, fees, handling and shrinkage' : 'Assumed transport + storage'} />}
+        {hasTotals && <Stat icon="✅" label="Expected net profit" value={rupee(net)} hint={bandHint(bandTotal)} tone={net > 0 ? 'good' : 'bad'} />}
+        {!hasTotals && summary.expectedNetProfitPerQuintal != null && <Stat icon="✅" label="Net profit per quintal" value={rupee(summary.expectedNetProfitPerQuintal)} hint={bandHint(bandQ) || 'Enter a quantity for totals'} tone={summary.expectedNetProfitPerQuintal > 0 ? 'good' : 'bad'} />}
         {summary.platformForecast && <Stat icon="🛒" label="If sold on AgriTrade" value={rupee(summary.platformForecast.expectedPayout)} hint={`At forecast price, after ${summary.platformForecast.platformFeePercent}% fee`} />}
       </div>
 
@@ -83,6 +88,11 @@ export default function DecisionSummaryCard({ summary, loading, error, crop, qua
         {summary.dataProvenance && summary.dataProvenance.syntheticPercent > 0 && summary.predictedPriceSource !== 'agmarknet_real' && (
           <p style={{ fontSize: '12px', color: '#b45309', background: '#fff3e0', borderRadius: 8, padding: '6px 10px' }}>
             ⚠️ {summary.dataProvenance.message}
+          </p>
+        )}
+        {summary.robustness && summary.robustness.stable === false && (
+          <p style={{ fontSize: '12px', color: '#8a6d00', background: '#fff8e1', borderRadius: 8, padding: '6px 10px' }}>
+            ℹ️ The best market changes if costs turn out higher than assumed, so compare the top two or three before travelling.
           </p>
         )}
         {summary.marketplacePredictedPrice != null && (

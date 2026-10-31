@@ -1,7 +1,8 @@
 name: CI
 
-# Runs on every push and pull request. Three independent jobs, so a failure
-# in one service is visible without hiding the others.
+# Runs on every push and pull request. Independent jobs per service (a failure in one
+# is visible without hiding the others), then an end-to-end job that drives a real
+# browser against the whole stack.
 on:
   push:
     branches: [main]
@@ -43,6 +44,12 @@ jobs:
       - run: pip install -r requirements-dev.txt
       # No MongoDB, API keys or network are needed: tests are hermetic.
       - run: python -m pytest -q
+      # Measures the assistant's question routing on labelled questions (held-out set = honest estimate).
+      - run: python -m evaluation.chatbot_eval --out evaluation/results
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chatbot-routing-report
+          path: analytics-service/evaluation/results/
 
   frontend:
     name: React app (Jest + production build)
@@ -62,3 +69,44 @@ jobs:
       # CI=true (set by GitHub) makes CRA treat ESLint warnings as errors, so
       # this also acts as a lint gate.
       - run: npm run build
+
+  e2e:
+    name: End-to-end (Playwright, real browser)
+    runs-on: ubuntu-latest
+    needs: [server, frontend]
+    services:
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+    env:
+      MONGO_URI: mongodb://localhost:27017/agribid_e2e
+      REACT_APP_API_BASE_URL: http://localhost:5000/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install API dependencies
+        run: npm ci
+        working-directory: server
+      - name: Build the React app
+        run: |
+          npm ci
+          npm run build
+        working-directory: agribid
+      - name: Install Playwright and Chromium
+        run: |
+          npm install
+          npx playwright install --with-deps chromium
+        working-directory: e2e
+      - name: Run the browser tests (starts the API and serves the build)
+        run: npx playwright test
+        working-directory: e2e
+        env:
+          E2E_START_SERVERS: "1"
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: e2e/playwright-report/

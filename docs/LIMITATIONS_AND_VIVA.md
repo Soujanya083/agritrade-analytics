@@ -36,16 +36,31 @@ This document exists so the project can be defended honestly. Nothing here is hi
 - Caching: invalidation detects new crops/bids/transactions and completed deliveries, not arbitrary in-place edits (the TTL is the backstop). Each worker process has its own cache.
 
 **Security**
-- JWT lives in `localStorage` (XSS-readable). A production design would use httpOnly cookies + CSRF protection.
+- (Fixed) The session no longer lives in `localStorage`: the short-lived access token (30 min) is held in memory only and a rotating **httpOnly refresh cookie** keeps users logged in; replaying a used cookie revokes the whole login chain. Remaining caveat: an XSS bug could still use the in-memory token while the page is open (for minutes, not 7 days). `/api/auth/*` uses a custom-header CSRF check.
 - Login messages distinguish "user not found" from "wrong password" (usability over anti-enumeration).
-- Without an SMS/email provider, OTP verification proves nothing; a determined user can register with someone else's email.
+- (Fixed when configured) With `EMAIL_PROVIDER` + key set, the OTP is e-mailed and never returned by the API. Without it the server runs in labelled **demo mode** (OTP echoed), which proves nothing; set the provider before any real use.
 - The QR code for UPI is drawn by a third-party service (qrserver.com), which sees the payment link.
-- If `CORS_ORIGINS` is unset the APIs accept any origin (they are protected by bearer tokens, not cookies); set it in production.
+- If `CORS_ORIGINS` is unset the APIs accept any origin and cookie sessions are disabled in production (fail-closed). Set it when deployed. (Fixed: DELETE was missing from the allowed CORS methods, so deleting a listing from the deployed site would have been blocked by the browser.)
 
 **Product**
-- Listing images are stored in MongoDB (≤ 400 KB each) and returned in the listings payload; at larger scale they belong in object storage.
+- (Fixed) `GET /api/crops` is paginated (24 per page, max 60, server-side search/category filters) and photos are served from a cacheable `/api/crops/:id/image` URL instead of being embedded as base64 in every listing. Images still live in MongoDB; at larger scale they belong in object storage.
 - Branding is inconsistent (AgriMarket / AgriTrade) in some UI text.
 - Payments: no refunds, disputes or escrow.
+
+## 2b. Status of the ten weaknesses (what was fixed, what only you can fix)
+
+| # | Weakness | Status | What was done / what you must do |
+|---|---|---|---|
+| 1 | ~99% of marketplace data is synthetic | **Needs you** | Tool added: `scripts/purge_seed_data.py` (dry-run by default). Real fix = real users. See IMPROVEMENT_GUIDE.md, step 3. |
+| 2 | Real prices end June 2025; no model beat naive | **Needs you (time)** | The daily collector exists but is switched off. Switch it on now; ~10 weeks of unbroken data are needed before the backtest means anything. |
+| 3 | No real money; OTP shown in the API | **Mostly fixed** | E-mail OTP (Brevo/Resend) removes the echo. Payments: use Razorpay **test mode** (real flow, fake money). Real money needs a registered business: out of scope for a student project; say so. |
+| 4 | Net profit is an optimistic upper bound | **Fixed (honestly)** | Every market now has a conservative / expected / optimistic band plus a robustness check. The percentages are still *assumptions*; replace them with farmer survey data (`study_tools costs`). |
+| 5 | Token in localStorage for 7 days | **Fixed** | 30-minute in-memory access token + rotating httpOnly refresh cookie. |
+| 6 | No user study | **Needs you** | Full kit in `user-study/` (protocol, consent, tasks, SUS, cost survey) and scoring tools. |
+| 7 | No end-to-end browser tests | **Fixed (CI)** | Playwright suite in `e2e/`, run in CI against real MongoDB. |
+| 8 | `server.js` and `DashboardPage.js` too large | **Fixed** | `server.js` 1022 -> 52 lines (models/, lib/, routes/); `DashboardPage.js` 1596 -> ~290 lines (+ hook + 12 section components). |
+| 9 | Unpaginated listings with inline photos | **Fixed** | Pagination, filters, cacheable image URL, dedicated rate limiter. |
+| 10 | Chatbot general answers unevaluated | **Evaluated; partly improved** | 190 labelled questions, held-out split, human-rating kit. Honest result: ~69% routing accuracy on unseen paraphrases (95% CI 56-80%). Safety net added: LLM answers containing prices are withheld. |
 
 ## 3. What to demonstrate in the viva
 

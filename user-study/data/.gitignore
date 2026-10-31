@@ -1,0 +1,4 @@
+# Participant data stays on your machine (privacy). Only this file and .gitkeep are committed.
+*
+!.gitignore
+!.gitkeep
