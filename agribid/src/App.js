@@ -6,6 +6,7 @@ import Footer from './components/Footer/Footer';
 import LoginPage from './components/Auth/LoginPage';
 import SignupPage from './components/Auth/SignupPage';
 import DashboardPage from './components/Dashboard/DashboardPage';
+import { clearSession, logoutSession } from './api/session';
 import './App.css';
 
 function App() {
@@ -20,8 +21,7 @@ function App() {
         setCurrentUser(parsedUser);
         setCurrentView('dashboard');
       } catch (error) {
-        localStorage.removeItem('user');
-        localStorage.removeItem('token');
+        clearSession();
       }
     }
   }, []);
@@ -37,8 +37,8 @@ function App() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('user');
-    localStorage.removeItem('token');
+    logoutSession(); // revokes the refresh cookie on the server, then clears this browser
+    clearSession();
     setCurrentUser(null);
     navigateTo('home');
   };

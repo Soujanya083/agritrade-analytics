@@ -110,3 +110,98 @@ def test_assumptions_are_disclosed_in_the_response():
 def test_quantity_kg_is_optional():
     result = get_market_recommendation("onion", farmer_state="Tamil Nadu")
     assert "expectedTotalNetProfit" not in result["recommendedMarket"]
+
+# ---------------------------------------------------------------------------
+# Profit band: the legacy number is an optimistic UPPER BOUND, so every market
+# also reports conservative / expected / optimistic scenarios.
+# ---------------------------------------------------------------------------
+from app.services.market_recommendation import (  # noqa: E402
+    PROFIT_SCENARIOS,
+    profit_band,
+    recommendation_robustness,
+    scenario_net_per_quintal,
+)
+
+
+def test_optimistic_scenario_equals_the_legacy_formula():
+    band = profit_band(2500, 80, 30)
+    assert band["optimistic"] == 2500 - 80 - 30
+
+
+def test_band_is_ordered_conservative_below_expected_below_optimistic():
+    for modal in (800, 2500, 6000):
+        for transport in (TRANSPORT_COST_SAME_STATE, TRANSPORT_COST_OTHER_STATE):
+            band = profit_band(modal, transport, 30)
+            assert band["conservative"] < band["expected"] < band["optimistic"]
+
+
+def test_expected_scenario_hand_calculation():
+    # 2500 * 0.98 (shrinkage) = 2450; minus 3% commission = 2376.5;
+    # minus 10 handling, minus 80 * 1.15 transport, minus 30 storage = 2244.5
+    assert profit_band(2500, 80, 30)["expected"] == 2244.5
+
+
+def test_conservative_scenario_hand_calculation():
+    # 2500 * 0.93 * 0.95 = 2208.75; minus 5% commission = 2098.3125;
+    # minus 20 handling, minus 80 * 1.4, minus 30 * 1.5 = 1921.31
+    assert profit_band(2500, 80, 30)["conservative"] == 1921.31
+
+
+def test_scenarios_are_disclosed_and_cover_all_three_cases():
+    assert set(PROFIT_SCENARIOS) == {"conservative", "expected", "optimistic"}
+    result = get_market_recommendation("onion", farmer_state="Tamil Nadu", quantity_kg=500)
+    assert set(result["assumptions"]["profitScenarios"]) == set(PROFIT_SCENARIOS)
+    assert "OPTIMISTIC" in result["assumptions"]["note"]
+
+
+def test_every_ranked_market_carries_a_band_and_totals():
+    result = get_market_recommendation("onion", farmer_state="Tamil Nadu", quantity_kg=500)
+    for m in result["rankedMarkets"]:
+        assert m["netProfitBandPerQuintal"]["optimistic"] == m["expectedNetProfitPerQuintal"]
+        assert m["netProfitBandTotal"]["expected"] == round(m["netProfitBandPerQuintal"]["expected"] * 500 / 100, 2)
+
+
+def test_a_thin_margin_can_turn_into_a_loss_in_the_conservative_case():
+    # a market paying only a little above the costs: optimistic profit, conservative loss
+    band = profit_band(190, 80, 30)
+    assert band["optimistic"] > 0
+    assert band["conservative"] < 0
+
+
+def _entry(name, state, modal, transport=80, storage=30):
+    return {"market": name, "district": "d", "state": state, "netProfitBandPerQuintal": profit_band(modal, transport, storage)}
+
+
+def test_robustness_is_stable_when_one_market_wins_everywhere():
+    ranked = [_entry("A", "X", 3000), _entry("B", "X", 2000)]
+    r = recommendation_robustness(ranked)
+    assert r["stable"] is True
+    assert r["headlineMarketStillBestWhenConservative"] is True
+    assert r["canLoseMoney"] is False
+
+
+def test_robustness_flags_a_winner_that_changes_under_pessimistic_assumptions():
+    # A quotes more but is far away: wins on the legacy number only if transport is cheap.
+    a = _entry("A", "X", 2600, transport=250)
+    b = _entry("B", "X", 2560, transport=80)
+    # make A the headline by the optimistic number (as the legacy ranking would)
+    a["netProfitBandPerQuintal"]["optimistic"] = 9999
+    r = recommendation_robustness([a, b])
+    assert r["stable"] is False
+    assert r["headlineMarketStillBestWhenConservative"] is False
+    assert r["bestMarketByScenario"]["conservative"] == "B"
+
+
+def test_robustness_reports_the_width_of_the_band_and_loss_risk():
+    r = recommendation_robustness([_entry("A", "X", 190)])
+    assert r["bandWidthPerQuintal"] > 0
+    assert r["canLoseMoney"] is True
+
+
+def test_scenario_function_never_mutates_inputs_and_is_monotonic_in_price():
+    sc = PROFIT_SCENARIOS["expected"]
+    before = dict(sc)
+    low = scenario_net_per_quintal(1000, 80, 30, sc)
+    high = scenario_net_per_quintal(1200, 80, 30, sc)
+    assert high > low
+    assert sc == before

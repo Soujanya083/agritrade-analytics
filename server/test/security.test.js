@@ -60,3 +60,17 @@ describe('OTP helpers', () => {
     expect(shouldExposeOtp({ EXPOSE_OTP_IN_RESPONSE: 'false' })).toBe(false);
   });
 });
+
+describe('CORS options for the deployed (allow-listed) setup', () => {
+  const options = buildCorsOptions({ CORS_ORIGINS: 'https://a.app' });
+  test('DELETE is allowed, otherwise browsers block "delete listing" at the preflight step', () => {
+    expect(options.methods).toContain('DELETE');
+  });
+  test('the refresh cookie needs credentials and the CSRF header must be allowed', () => {
+    expect(options.credentials).toBe(true);
+    expect(options.allowedHeaders).toContain('X-Requested-With');
+  });
+  test('with no allow-list, credentials are never enabled by this function ("any origin + cookies" is unsafe)', () => {
+    expect(buildCorsOptions({}).credentials).toBeUndefined();
+  });
+});

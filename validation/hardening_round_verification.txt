@@ -1,0 +1,16 @@
+Hardening round: what was verified in the build sandbox (no internet, no MongoDB, no npm install)
+=================================================================================================
+Server split:       stub harness loads server.js; route table identical to the original (22 routes) + 3 new routes
+                    (GET /api/crops/:id/image, POST /api/auth/refresh, POST /api/auth/logout).
+                    Handler bodies diffed against the original, whitespace-insensitive: identical.
+Static checks:      TypeScript compiler (allowJs/checkJs) over server, React and e2e sources:
+                    0 syntax errors, 0 undefined names, 0 duplicate declarations, 0 unused locals in the React app.
+Server unit tests:  63 passed (security, imageValidation, listings, otpSender, refreshTokens) in a Jest-compatible runner.
+React unit tests:   33 passed (session, analyticsClient, imageTools) in the same runner.
+Python tests:       417 passed / 60 not runnable here (need FastAPI, tmp_path or client fixtures); the same 60 were not
+                    runnable on the ORIGINAL code, and no previously passing file got worse (372 -> 417 passed).
+Mutation check:     removing the "revoke the whole family on replay" line made the refresh-token test fail.
+Chatbot routing:    dev 100% (tuned), dev2 96% (tuned), held-out 69% (95% CI 56-80%); 11/29 held-out data questions reached the LLM.
+
+NOT run: server Jest tests that need MongoDB, React Testing Library tests, `npm run build`, FastAPI tests,
+Playwright, live e-mail providers, Razorpay, live LLM. Run them locally / in CI (see IMPROVEMENT_GUIDE.md section 2).

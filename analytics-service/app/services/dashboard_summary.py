@@ -408,7 +408,10 @@ def get_crop_decision_summary(crop_name: str, farmer_state: str = None, quantity
         }
 
     best = market_rec["recommendedMarket"]
-    net_per_quintal = best["expectedNetProfitPerQuintal"]
+    band = best.get("netProfitBandPerQuintal")          # {conservative, expected, optimistic}; absent in old data
+    # Headline = the EXPECTED scenario (commission, handling, shrinkage included). The legacy
+    # figure (modal - transport - storage) is only the optimistic upper bound of the band.
+    net_per_quintal = band["expected"] if band else best["expectedNetProfitPerQuintal"]
     per_quintal_cost = best["transportCostPerQuintal"] + best["storageCostPerQuintal"]
 
     summary.update({
@@ -417,18 +420,32 @@ def get_crop_decision_summary(crop_name: str, farmer_state: str = None, quantity
         "bestMarketState": best["state"],
         "bestMarketModalPricePerQuintal": best["modalPricePerQuintal"],
         "expectedNetProfitPerQuintal": net_per_quintal,
-        "expectedTotalNetProfit": best.get("expectedTotalNetProfit"),
+        "expectedTotalNetProfit": (best.get("netProfitBandTotal") or {}).get("expected", best.get("expectedTotalNetProfit")),
         "mandiDataSource": market_rec.get("source"),
         "mandiDataAsOf": market_rec.get("dataAsOf"),
         "assumptions": market_rec["assumptions"],
     })
+    if band:
+        summary["netProfitBandPerQuintal"] = band
+        if best.get("netProfitBandTotal"):
+            summary["netProfitBandTotal"] = best["netProfitBandTotal"]
+        if market_rec.get("robustness"):
+            summary["robustness"] = market_rec["robustness"]
     if quantity_kg:
         summary["expectedRevenue"] = round(best["modalPricePerQuintal"] * quantity_kg / 100, 2)
-        summary["expectedCost"] = round(per_quintal_cost * quantity_kg / 100, 2)
-        summary["expectedNetProfit"] = best.get("expectedTotalNetProfit")
+        if band:
+            # cost = EVERYTHING deducted from the quote (transport, storage, fees, handling,
+            # shrinkage) so that revenue - cost == expected net profit on screen.
+            summary["expectedCost"] = round((best["modalPricePerQuintal"] - band["expected"]) * quantity_kg / 100, 2)
+        else:
+            summary["expectedCost"] = round(per_quintal_cost * quantity_kg / 100, 2)
+        summary["expectedNetProfit"] = summary["expectedTotalNetProfit"]
 
+    thin_margin = bool(band) and band["conservative"] <= 0 < band["expected"]
     if net_per_quintal > 0:
         action = f"SELL AT {best['market'].upper()}"
+        if thin_margin:
+            action += " - but the margin is thin: under pessimistic assumptions it would not cover costs"
         if summary.get("timing", {}).get("recommendation") == "Wait":
             action += f" - but the marketplace trend suggests waiting: {summary['timing']['reason']}"
     else:

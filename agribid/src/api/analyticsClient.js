@@ -11,6 +11,8 @@
 //    (e.g. crop recommendations). Identical in-flight GETs are shared, and
 //    successful GETs are remembered briefly, so duplicates cost nothing.
 
+import { ensureAccessToken, refreshSession, setAccessToken } from './session';
+
 export const ANALYTICS_BASE =
   process.env.REACT_APP_ANALYTICS_BASE_URL || 'http://localhost:8000/api/analytics';
 
@@ -65,7 +67,10 @@ const withAbort = (promise, signal) => {
 
 export function createAnalyticsClient({
   baseUrl = ANALYTICS_BASE,
-  getToken = () => (typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null),
+  // May be async: the default asks the session module, which refreshes a missing token.
+  getToken = () => ensureAccessToken(),
+  // Optional: called once after a 401; return a new token to retry the request with, or null.
+  refreshToken = null,
   fetchImpl = (...args) => fetch(...args),
   onUnauthorized = () => {},
   cacheMs = 60 * 1000,
@@ -75,14 +80,20 @@ export function createAnalyticsClient({
   const cache = new Map();
 
   async function request(method, path, params, body) {
-    const token = getToken();
-    const headers = { Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+    const send = async (token) => {
+      const headers = { Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+      try {
+        return await fetchImpl(`${baseUrl}${path}${buildQuery(params)}`, { method, headers, body: body ? JSON.stringify(body) : undefined });
+      } catch (networkError) {
+        throw new AnalyticsError(0, 'Could not reach the analytics service.');
+      }
+    };
 
-    let response;
-    try {
-      response = await fetchImpl(`${baseUrl}${path}${buildQuery(params)}`, { method, headers, body: body ? JSON.stringify(body) : undefined });
-    } catch (networkError) {
-      throw new AnalyticsError(0, 'Could not reach the analytics service.');
+    const token = await getToken();
+    let response = await send(token);
+    if (response.status === 401 && refreshToken) {
+      const renewed = await refreshToken();
+      if (renewed) response = await send(renewed);
     }
 
     let payload = null;
@@ -117,6 +128,12 @@ export function createAnalyticsClient({
 }
 
 export const analytics = createAnalyticsClient({
+  // After a 401 renew the access token through the httpOnly refresh cookie and retry once.
+  refreshToken: async () => {
+    setAccessToken(null);
+    const refreshed = await refreshSession();
+    return refreshed ? refreshed.token : null;
+  },
   onUnauthorized: () => {
     if (typeof window !== 'undefined') window.dispatchEvent(new Event('agritrade:unauthorized'));
   },

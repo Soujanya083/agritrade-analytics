@@ -73,3 +73,25 @@ test("shows today's live mandi price, and says the forecast is withheld when its
   expect(screen.getByText(/Forecast withheld/)).toBeInTheDocument();
   expect(screen.getByText(/ends on 2025-06-11/)).toBeInTheDocument();
 });
+
+test('shows the profit as a range when the API provides a scenario band', () => {
+  render(<DecisionSummaryCard crop="Onion" quantityKg={500}
+    summary={{ ...summary, expectedCost: 1000, expectedNetProfit: 11000,
+      netProfitBandPerQuintal: { conservative: 1900, expected: 2200, optimistic: 2290 },
+      netProfitBandTotal: { conservative: 9500, expected: 11000, optimistic: 11450 } }} />);
+  expect(screen.getByText(/Range ₹9,500 to ₹11,450/)).toBeInTheDocument();
+  expect(screen.getByText(/fees, handling and shrinkage/)).toBeInTheDocument();
+});
+
+test('per-quintal view also shows the range', () => {
+  const { expectedRevenue, expectedCost, expectedNetProfit, platformForecast, ...rest } = summary;
+  render(<DecisionSummaryCard quantityKg={null} crop="Onion"
+    summary={{ ...rest, expectedNetProfitPerQuintal: 2200, netProfitBandPerQuintal: { conservative: 1900, expected: 2200, optimistic: 2290 } }} />);
+  expect(screen.getByText(/Range ₹1,900 to ₹2,290/)).toBeInTheDocument();
+});
+
+test('warns when the best market depends on the cost assumptions', () => {
+  render(<DecisionSummaryCard crop="Onion" quantityKg={500} summary={{ ...summary, robustness: { stable: false } }} />);
+  expect(screen.getByText(/best market changes if costs turn out higher/)).toBeInTheDocument();
+});
+

@@ -193,3 +193,68 @@ def test_todays_mandi_price_is_shown_when_the_market_data_has_a_median(monkeypat
     patch_services(monkeypatch, market={**MARKET, "medianModalPricePerKg": 41.5, "dataAsOf": "2026-10-24", "marketsCompared": 30})
     s = dashboard_summary.get_crop_decision_summary("Onion", "Tamil Nadu", 500)
     assert s["todayMandiPrice"]["pricePerKg"] == 41.5 and s["todayMandiPrice"]["asOf"] == "2026-10-24"
+
+
+# ------------------------------------------------------ profit band in the decision summary
+BANDED_MARKET = {
+    **MARKET,
+    "recommendedMarket": {
+        **MARKET["recommendedMarket"],
+        "netProfitBandPerQuintal": {"conservative": 1900.0, "expected": 2200.0, "optimistic": 2290.0},
+        "netProfitBandTotal": {"conservative": 9500.0, "expected": 11000.0, "optimistic": 11450.0},
+    },
+    "robustness": {"stable": True, "canLoseMoney": False},
+}
+
+
+def test_headline_is_the_expected_case_and_the_band_is_exposed(monkeypatch):
+    patch_services(monkeypatch, market=BANDED_MARKET)
+    s = dashboard_summary.get_crop_decision_summary("Onion", "Maharashtra", 500)
+    assert s["expectedNetProfitPerQuintal"] == 2200.0          # not the 2290 upper bound
+    assert s["expectedNetProfit"] == 11000.0
+    assert s["netProfitBandPerQuintal"]["conservative"] == 1900.0
+    assert s["netProfitBandTotal"]["optimistic"] == 11450.0
+    assert s["robustness"]["stable"] is True
+
+
+def test_with_a_band_revenue_minus_cost_still_equals_the_headline_profit(monkeypatch):
+    patch_services(monkeypatch, market=BANDED_MARKET)
+    s = dashboard_summary.get_crop_decision_summary("Onion", "Maharashtra", 500)
+    # cost now means EVERYTHING deducted from the quote (transport, storage, fees, shrinkage...)
+    assert s["expectedRevenue"] == 12000.0
+    assert s["expectedRevenue"] - s["expectedCost"] == s["expectedNetProfit"]
+
+
+def test_thin_margin_is_called_out_in_the_action_text(monkeypatch):
+    thin = {
+        **BANDED_MARKET,
+        "recommendedMarket": {
+            **BANDED_MARKET["recommendedMarket"],
+            "netProfitBandPerQuintal": {"conservative": -15.0, "expected": 40.0, "optimistic": 120.0},
+            "netProfitBandTotal": {"conservative": -75.0, "expected": 200.0, "optimistic": 600.0},
+        },
+    }
+    patch_services(monkeypatch, market=thin)
+    s = dashboard_summary.get_crop_decision_summary("Onion", None, 500)
+    assert s["actionText"].startswith("SELL AT LASALGAON")
+    assert "margin is thin" in s["actionText"]
+
+
+def test_a_comfortable_margin_has_no_warning(monkeypatch):
+    patch_services(monkeypatch, market=BANDED_MARKET)
+    s = dashboard_summary.get_crop_decision_summary("Onion", None, 500)
+    assert "thin" not in s["actionText"]
+
+
+def test_expected_case_loss_means_hold_even_if_the_old_number_was_positive(monkeypatch):
+    losing = {
+        **BANDED_MARKET,
+        "recommendedMarket": {
+            **BANDED_MARKET["recommendedMarket"],
+            "netProfitBandPerQuintal": {"conservative": -80.0, "expected": -5.0, "optimistic": 60.0},
+            "netProfitBandTotal": {"conservative": -400.0, "expected": -25.0, "optimistic": 300.0},
+        },
+    }
+    patch_services(monkeypatch, market=losing)
+    s = dashboard_summary.get_crop_decision_summary("Onion", None, 500)
+    assert s["actionText"].startswith("CONSIDER HOLDING")

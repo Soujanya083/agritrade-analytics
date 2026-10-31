@@ -38,6 +38,61 @@ TRANSPORT_COST_OTHER_STATE = 250     # long-haul, crossing a state border
 STORAGE_COST_PER_QUINTAL_PER_DAY = 15
 ASSUMED_STORAGE_DAYS = 2             # typical gap between harvest and sale
 
+# ---- Profit scenarios (disclosed, illustrative - calibrate with real farmer data) ----
+# The flat transport + storage figures above give an OPTIMISTIC UPPER BOUND: they assume the
+# farmer sells everything at exactly the quoted modal price and pays no commission, handling
+# or spoilage. Real selling days are worse than that, so every market also gets a band:
+#   optimistic   = the legacy number above (modal price - transport - storage)
+#   expected     = a few % commission/market fee, handling, small shrinkage, slightly higher haulage
+#   conservative = sells below the quote, higher fees, more shrinkage, costly transport + storage
+# These percentages are ASSUMPTIONS, not measurements. USABILITY_FEEDBACK / the user-study kit
+# asks real farmers for their actual costs so they can be replaced with observed values.
+PROFIT_SCENARIOS = {
+    "optimistic":   {"priceHaircutPct": 0.0, "commissionPct": 0.0, "handlingPerQuintal": 0,  "shrinkagePct": 0.0, "transportMultiplier": 1.0,  "storageMultiplier": 1.0},
+    "expected":     {"priceHaircutPct": 0.0, "commissionPct": 3.0, "handlingPerQuintal": 10, "shrinkagePct": 2.0, "transportMultiplier": 1.15, "storageMultiplier": 1.0},
+    "conservative": {"priceHaircutPct": 7.0, "commissionPct": 5.0, "handlingPerQuintal": 20, "shrinkagePct": 5.0, "transportMultiplier": 1.4,  "storageMultiplier": 1.5},
+}
+
+
+def scenario_net_per_quintal(modal_price: float, transport_cost: float, storage_cost: float, scenario: dict) -> float:
+    """Net rupees per quintal in ONE scenario (see PROFIT_SCENARIOS)."""
+    price = modal_price * (1 - scenario["priceHaircutPct"] / 100)
+    price *= (1 - scenario["shrinkagePct"] / 100)          # spoilage / weight loss on the way
+    price -= price * scenario["commissionPct"] / 100        # commission agent + market fee
+    return (price - scenario["handlingPerQuintal"]
+            - transport_cost * scenario["transportMultiplier"]
+            - storage_cost * scenario["storageMultiplier"])
+
+
+def profit_band(modal_price: float, transport_cost: float, storage_cost: float) -> dict:
+    """{conservative, expected, optimistic} net rupees per quintal (rounded, never reordered)."""
+    return {name: round(scenario_net_per_quintal(modal_price, transport_cost, storage_cost, sc), 2)
+            for name, sc in PROFIT_SCENARIOS.items()}
+
+
+def _market_key(entry: dict) -> tuple:
+    return (entry.get("market"), entry.get("district"), entry.get("state"))
+
+
+def recommendation_robustness(ranked: list) -> dict:
+    """Does the chosen market survive pessimistic assumptions? The headline ranking uses the
+    legacy optimistic figure (API contract); this reports whether the winner changes when the
+    expected / conservative scenarios are used instead, and whether it can still lose money."""
+    best_by = {}
+    for name in PROFIT_SCENARIOS:
+        top = max(ranked, key=lambda e: e["netProfitBandPerQuintal"][name])
+        best_by[name] = top
+    headline = ranked[0]
+    band = headline["netProfitBandPerQuintal"]
+    return {
+        "bestMarketByScenario": {name: e["market"] for name, e in best_by.items()},
+        "stable": len({_market_key(e) for e in best_by.values()}) == 1,
+        "headlineMarketStillBestWhenConservative": _market_key(best_by["conservative"]) == _market_key(headline),
+        "conservativeNetPerQuintal": band["conservative"],
+        "bandWidthPerQuintal": round(band["optimistic"] - band["conservative"], 2),
+        "canLoseMoney": band["conservative"] <= 0,
+    }
+
 
 # Imported AGMARKNET history is preferred over the live API: it needs no API key and
 # is the same data the forecasts use. Only the most recent window is ranked.
@@ -184,11 +239,14 @@ def get_market_recommendation(
             "transportCostPerQuintal": transport_cost,
             "transportTier": tier,
             "storageCostPerQuintal": storage_cost,
+            # LEGACY figure = the optimistic upper bound (kept so the API contract and ranking are stable)
             "expectedNetProfitPerQuintal": round(net_profit_per_quintal, 2),
             "expectedNetProfitPerKg": round(net_profit_per_kg, 2),
+            "netProfitBandPerQuintal": profit_band(modal_price, transport_cost, storage_cost),
         }
         if quantity_kg:
             entry["expectedTotalNetProfit"] = round(net_profit_per_kg * quantity_kg, 2)
+            entry["netProfitBandTotal"] = {k: round(v * quantity_kg / 100, 2) for k, v in entry["netProfitBandPerQuintal"].items()}
 
         ranked.append(entry)
 
@@ -210,9 +268,13 @@ def get_market_recommendation(
             "note": (
                 "Transport and storage costs are disclosed flat-rate "
                 "assumptions, not measured logistics data. Market prices "
-                "themselves are real AGMARKNET records."
+                "themselves are real AGMARKNET records. expectedNetProfitPerQuintal "
+                "is the OPTIMISTIC upper bound; see netProfitBandPerQuintal for the "
+                "conservative / expected / optimistic range."
             ),
+            "profitScenarios": PROFIT_SCENARIOS,
         },
+        "robustness": recommendation_robustness(ranked),
         "recommendedMarket": best,
         "rankedMarkets": ranked,
         "source": mandi_data.get("source"),

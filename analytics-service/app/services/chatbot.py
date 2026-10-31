@@ -67,7 +67,10 @@ INDIAN_STATES = [
     "telangana", "tripura", "uttar pradesh", "uttarakhand", "west bengal", "delhi",
 ]
 
-_BLOCKED = re.compile(r"\b(bomb|explosive|weapon|poison (a |some )?(person|people|human|neighbou?r)|kill (a |my )?(person|neighbou?r|wife|husband))\b", re.I)
+_BLOCKED = re.compile(
+    r"\b(bomb|explosive|weapon"
+    r"|poison (a |some |my |the |his |her |our )?(person|people|human|neighbou?r(\'?s)?( dog| cat| cow| goat| pet)?|dog|cat|child|kid|wife|husband|boss)"
+    r"|kill (a |my )?(person|neighbou?r|wife|husband))\b", re.I)
 
 SYSTEM_PROMPT = (
     "You are the help assistant inside AgriTrade, an Indian agricultural marketplace. "
@@ -121,6 +124,16 @@ def _word_regex(phrase: str) -> re.Pattern:
     return re.compile(rf"(?<![a-z]){re.escape(phrase)}(?:s|es)?(?![a-z])")
 
 
+def _within_one_edit(a: str, b: str) -> bool:
+    """True when a and b differ by exactly one inserted, deleted or substituted letter."""
+    if a == b or abs(len(a) - len(b)) > 1:
+        return False
+    if len(a) == len(b):
+        return sum(x != y for x, y in zip(a, b)) == 1
+    short, long_ = (a, b) if len(a) < len(b) else (b, a)
+    return any(long_[:i] + long_[i + 1:] == short for i in range(len(long_)))
+
+
 def find_crop(text: str, crop_names: list[str]) -> str | None:
     """Longest crop name found as a whole word (so 'rice' never matches inside 'price')."""
     text = text.lower()
@@ -134,9 +147,16 @@ def find_crop(text: str, crop_names: list[str]) -> str | None:
         if _word_regex(name).search(text):
             return lowered[name]
 
-    # Typo tolerance for single-word crops ("tomatoe", "potatto").
+    # Typo tolerance for single-word crops ("tomatoe", "potatto", and swapped letters: "whaet", "onoin").
     single = [n for n in lowered if " " not in n and len(n) >= 5]
     for word in re.findall(r"[a-z]{5,}", text):
+        for i in range(len(word) - 1):
+            swapped = word[:i] + word[i + 1] + word[i] + word[i + 2:]
+            if swapped in single:
+                return lowered[swapped]
+        for name in single:
+            if _within_one_edit(word, name):
+                return lowered[name]
         close = difflib.get_close_matches(word, single, n=1, cutoff=0.84)
         if close:
             return lowered[close[0]]
@@ -164,31 +184,80 @@ def _has(text: str, *phrases: str) -> bool:
     return any(re.search(rf"(?<![a-z]){re.escape(p)}(?![a-z])", text) for p in phrases)
 
 
+# Words that trigger an intent, and the misspellings we repair before looking for them. Explicit and
+# exact on purpose: a fuzzy match would turn "prime minister" into "price" and send it to the data path.
+_INTENT_VOCAB = {"price", "prices", "forecast", "predict", "prediction", "demand", "trend", "history", "today", "current", "latest"}
+_TYPO_FIXES = {
+    "prise": "price", "pricee": "price", "prce": "price", "pries": "price", "forcast": "forecast", "forecst": "forecast",
+    "forcst": "forecast", "predct": "predict", "demnd": "demand", "tody": "today", "curent": "current",
+    "lastest": "latest", "histroy": "history", "hystory": "history", "trned": "trend",
+    "predicton": "prediction", "predction": "prediction", "predicition": "prediction",
+    "demmand": "demand", "dmand": "demand", "demad": "demand", "demnad": "demand",
+}
+# Agronomy questions that reuse words like "rate" or "cost" - these are NOT market-price questions.
+_NOT_A_PRICE = ("seed rate", "sowing rate", "application rate", "dose rate", "fertiliser rate", "fertilizer rate",
+                "cost of growing", "cost of cultivation", "cost of production", "cost to grow", "cost of farming",
+                "germination rate", "rate of germination", "growth rate", "rate of growth", "rate of application",
+                "mortality rate", "interest rate")
+# Words that show a question is about buying / selling / pricing, even when no intent phrase matched.
+_MARKETISH = ("sell", "selling", "sells", "sold", "price", "prices", "rate", "rates", "cost", "demand", "market",
+              "mandi", "worth", "profit", "earn", "bechu", "bechna", "bhav", "bhaav", "keemat", "kimat", "daam")
+_PRICE_WORDS = ("price", "prices", "rate", "rates", "bhav", "bhaav", "keemat", "kimat", "daam")
+_TODAY_WORDS = ("today", "today's", "todays", "current", "currently", "latest", "right now", "aaj", "abhi")
+
+
+def _repair_typos(text: str) -> str:
+    def fix(match):
+        word = match.group(0)
+        if word in _TYPO_FIXES:
+            return _TYPO_FIXES[word]
+        if len(word) >= 5:
+            for i in range(len(word) - 1):          # adjacent letters swapped: "pirce", "demnad", "todya"
+                swapped = word[:i] + word[i + 1] + word[i] + word[i + 2:]
+                if swapped in _INTENT_VOCAB:
+                    return swapped
+        return word
+    return re.sub(r"[a-z']+", fix, text)
+
+
 def detect_intent(text: str, has_crop: bool) -> str | None:
     """Returns a project-data intent name, or None for a general question."""
+    text = _repair_typos(text)
+    if _has(text, *_NOT_A_PRICE):
+        return None
+    # "Which crop ...?" with no crop named is a crop-choice question, even if it mentions price or demand.
+    if not has_crop and _has(text, "which crop", "which crops", "what crop", "best crop"):
+        return "recommendation"
     # A price question about today/now is a LIVE mandi question (checked before the "mandi" -> best-market rule).
-    if (_has(text, "price", "prices", "rate", "rates")
-            and _has(text, "today", "today's", "todays", "current", "currently", "latest", "right now")
+    if (_has(text, *_PRICE_WORDS)
+            and _has(text, *_TODAY_WORDS)
             and not _has(text, "trend", "history", "how has", "where to sell", "where should i sell",
                          "best market", "which market")):
         return "today_price" if has_crop else "needs_crop"
     # "where should I sell" must be checked before "should I sell".
     if _has(text, "where to sell", "where should i sell", "best market", "which market", "mandi", "net profit"):
         return "market"
-    if _has(text, "sell now", "should i sell", "wait to sell", "when to sell", "when should i sell", "hold or sell"):
+    if _has(text, "sell now", "should i sell", "wait to sell", "when to sell", "when should i sell", "hold or sell",
+            "kab bechna", "kab beche", "kab bechu", "bechna chahiye", "good time to sell", "best time to sell",
+            "right time to sell", "time to sell"):
         return "sell_or_wait"
     if _has(text, "demand") and has_crop:
         return "demand_forecast"
     if _has(text, "trend", "history", "how has", "current price", "latest price", "price today", "today's price"):
         return "price_trend" if has_crop else "needs_crop"
-    if _has(text, "price", "prices", "rate", "forecast", "predict", "expected", "worth") or (
+    if _has(text, "price", "prices", "rate", "rates", "forecast", "predict", "prediction", "predictions", "expected", "worth",
+            "bhav", "bhaav", "keemat", "kimat", "daam") or (
+        _has(text, "cost") and _has(text, "will", "next week", "next month", "tomorrow") and has_crop
+    ) or (
         _has(text, "cost of") and has_crop
     ):
         return "price_prediction" if has_crop else "needs_crop"
-    if _has(text, "best selling", "best-selling", "top crops", "most sold", "top selling"):
+    if _has(text, "best selling", "best-selling", "bestselling", "top crops", "most sold", "top selling",
+            "sells the most", "sell the most", "most popular crop", "most popular crops"):
         return "best_selling"
     if _has(text, "which crop", "what crop", "recommend", "higher demand", "highest demand", "best crop",
-            "what should i sell", "what should i grow", "what to grow", "what to sell"):
+            "what should i sell", "what should i grow", "what to grow", "what to sell", "what should i plant",
+            "what to plant", "which crop to plant", "suggest a crop", "crop suggestion"):
         return "recommendation"
     if _has(text, "demand"):
         return "needs_crop"
@@ -285,8 +354,12 @@ def _answer_market(crop, entities):
     best = result["recommendedMarket"]
     return _project(
         f"For {crop}, the best market right now is {best['market']} ({best['district']}, {best['state']}): "
-        f"modal price ₹{best['modalPricePerQuintal']}/quintal, expected net ₹{best['expectedNetProfitPerQuintal']}/quintal "
-        f"after assumed transport and storage costs. Prices: {result.get('source')}"
+        f"modal price ₹{best['modalPricePerQuintal']}/quintal, "
+        + (f"expected net about ₹{best['netProfitBandPerQuintal']['expected']}/quintal (range ₹{best['netProfitBandPerQuintal']['conservative']} "
+           f"to ₹{best['netProfitBandPerQuintal']['optimistic']}) after assumed transport, storage, fees and shrinkage"
+           if best.get("netProfitBandPerQuintal") else
+           f"expected net ₹{best['expectedNetProfitPerQuintal']}/quintal after assumed transport and storage costs")
+        + f". Prices: {result.get('source')}"
         + (f", data up to {result['dataAsOf']}" if result.get("dataAsOf") else "") + ".",
         "market", result, entities)
 
@@ -338,6 +411,24 @@ def _llm_unavailable(reason: str) -> dict:
     }
 
 
+# The LLM has no marketplace data and its prompt forbids quoting prices. This is the second line of defence:
+# if the router sent a price question to the LLM anyway (keyword routers miss paraphrases) and the model
+# still produced a price figure, the figure is withheld instead of being shown as if it were real.
+_PRICE_FIGURE = re.compile(
+    r"(₹|\brs\.?\s?|\binr\b|\brupees?\b)\s?\d"
+    r"|\b\d[\d,.]*\s?(₹|rs\b|rupees?\b|/\s?kg|per\s+kg|/\s?quintal|per\s+quintal)", re.I)
+
+PRICE_GUARD_REPLY = (
+    "That looks like a price or market question, and I can't answer those from general knowledge - any number I "
+    "gave would be made up. Ask me with a crop name instead, for example \"What is the price of wheat today?\" or "
+    "\"What will tomato cost next week?\", and I'll answer from this marketplace's data."
+)
+
+
+def contains_price_figure(text: str) -> bool:
+    return bool(_PRICE_FIGURE.search(text or ""))
+
+
 def _answer_general(message: str, user_key: str) -> dict:
     if _BLOCKED.search(message):
         return {"reply": "Sorry, I can't help with that. I can help with farming questions and marketplace analytics.",
@@ -354,37 +445,81 @@ def _answer_general(message: str, user_key: str) -> dict:
     except llm_client.LLMError:
         return _llm_unavailable("The AI service is temporarily unavailable, so I couldn't answer that general question.")
 
+    if contains_price_figure(answer):
+        return {"reply": PRICE_GUARD_REPLY, "intent": "general_blocked_price", "source": SOURCE_FALLBACK, "entities": {}}
+
     return {"reply": answer, "intent": "general_agriculture", "source": SOURCE_LLM,
             "disclaimer": LLM_DISCLAIMER, "entities": {}}
 
 
 # ------------------------------------------------------------------ entry
+ROUTE_HELP = "help"
+ROUTE_NEEDS_CROP = "needs_crop"
+ROUTE_GENERAL = "general"        # goes to the LLM (or the honest fallback) - NOT project data
+ROUTE_DECLINED = "declined"
+ROUTE_CLARIFY = "clarify"        # about a crop's market, but no specific question recognised: ask, don't guess
+
+
+def route_message(message: str, crop_names: list, locations: list) -> dict:
+    """Decides how a message is handled WITHOUT touching the database, the network or the LLM.
+
+    Returns {"route", "crop", "entities"}; route is "help", "needs_crop", "declined", "general"
+    (LLM path) or one of the project-data intents (price_prediction, today_price, market, ...).
+    handle_message() acts on this, and evaluation/chatbot_eval.py measures it, so what is
+    evaluated is exactly what runs in production.
+    """
+    text = message.lower()
+    crop = find_crop(text, crop_names)
+    location = find_location(text, locations)
+    state = find_state(text)
+    entities = {k: v for k, v in {"crop": crop, "location": location, "state": state}.items() if v}
+
+    if _has(text, "hello", "hi", "hey", "help", "what can you do") and len(text.split()) <= 4:
+        return {"route": ROUTE_HELP, "crop": None, "entities": {}}
+
+    intent = detect_intent(text, has_crop=bool(crop))
+    if intent == "needs_crop" or (intent in ("sell_or_wait", "market") and not crop):
+        return {"route": ROUTE_NEEDS_CROP, "crop": None, "entities": entities}
+    if intent in _CROP_ANSWERERS or intent in ("recommendation", "best_selling"):
+        return {"route": intent, "crop": crop, "entities": entities}
+    if _BLOCKED.search(message):
+        return {"route": ROUTE_DECLINED, "crop": crop, "entities": entities}
+    # The LLM has no marketplace data. If a known crop appears with price/sell/demand words and no intent
+    # matched, asking what the farmer wants is safer than letting the LLM improvise about prices.
+    if crop and _has(_repair_typos(text), *_MARKETISH) and not _has(text, *_NOT_A_PRICE):
+        return {"route": ROUTE_CLARIFY, "crop": crop, "entities": entities}
+    return {"route": ROUTE_GENERAL, "crop": crop, "entities": entities}
+
+
+def _clarify_reply(crop: str, entities: dict) -> dict:
+    return {
+        "reply": (f"I can look up {crop} in this marketplace's data, but I'm not sure which you want: today's mandi price, "
+                  f"the price forecast, the price trend, demand, the best market, or whether to sell now or wait? "
+                  f"For example: \"What will the price of {crop.lower()} be next week?\""),
+        "intent": "clarify", "source": SOURCE_FALLBACK, "entities": entities,
+    }
+
+
 def handle_message(message: str, user_key: str = "anonymous") -> dict:
     message = (message or "").strip()[:MAX_MESSAGE_CHARS]
     if not message:
         return {"reply": HELP_REPLY, "intent": "help", "source": SOURCE_FALLBACK, "entities": {}}
 
-    text = message.lower()
     crop_names = [row["cropName"] for row in catalog.list_crops()]
-    crop = find_crop(text, crop_names)
-    location = find_location(text, catalog.list_locations())
-    state = find_state(text)
-    entities = {k: v for k, v in {"crop": crop, "location": location, "state": state}.items() if v}
+    routed = route_message(message, crop_names, catalog.list_locations())
+    route, crop, entities = routed["route"], routed["crop"], routed["entities"]
 
-    if _has(text, "hello", "hi", "hey", "help", "what can you do") and len(text.split()) <= 4:
+    if route == ROUTE_HELP:
         return {"reply": HELP_REPLY, "intent": "help", "source": SOURCE_FALLBACK, "entities": {}}
-
-    intent = detect_intent(text, has_crop=bool(crop))
-
-    if intent == "needs_crop":
+    if route == ROUTE_NEEDS_CROP:
         return _needs_crop_reply(crop_names)
-    if intent in ("sell_or_wait", "market") and not crop:
-        return _needs_crop_reply(crop_names)
-    if intent in _CROP_ANSWERERS:
-        return _CROP_ANSWERERS[intent](crop, entities)
-    if intent == "recommendation":
-        return _answer_recommendation(location, entities)
-    if intent == "best_selling":
+    if route == ROUTE_CLARIFY:
+        return _clarify_reply(crop, entities)
+    if route in _CROP_ANSWERERS:
+        return _CROP_ANSWERERS[route](crop, entities)
+    if route == "recommendation":
+        return _answer_recommendation(entities.get("location"), entities)
+    if route == "best_selling":
         return _answer_best_selling(entities)
 
-    return _answer_general(message, user_key)
+    return _answer_general(message, user_key)   # general question (or a blocked one: it declines itself)

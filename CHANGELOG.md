@@ -2,6 +2,25 @@
 
 Each round built on the previous one; this package contains all of them.
 
+## Hardening round: the ten known weaknesses (2026-10)
+
+Security and accounts
+- Sessions: 30-minute access token held in memory only + rotating httpOnly refresh cookie (`/api/auth/refresh`, `/api/auth/logout`); a replayed cookie revokes the whole login chain; custom-header CSRF check; two-tab grace window.
+- Signup / resend OTP is e-mailed when `EMAIL_PROVIDER` (Brevo or Resend) is configured; the API never returns the OTP in that case. Demo mode is unchanged when nothing is configured.
+- CORS: `DELETE` was missing from the allowed methods (deleting a listing from the deployed site would have been blocked); credentials only with an explicit origin allow-list.
+
+Performance and structure
+- `GET /api/crops` is paginated (default 24, max 60) with whitelisted filters (`category`, `status`, `farmerId`, `q`); uploaded photos are served from `/api/crops/:id/image` (cacheable, own rate limiter) instead of inline base64.
+- `server.js` split into `models/`, `lib/` and `routes/` (route table verified identical, handler bodies unchanged); `DashboardPage.js` split into `useDashboardData.js`, `dashboardConfig.js` and 12 components in `sections/`. React app loads listings a page at a time with a "Load more" button.
+
+Data science
+- Net profit now has a conservative / expected / optimistic band and a robustness check (does the best market survive pessimistic assumptions?). The old figure is kept and labelled as the optimistic upper bound. Decision summary headline = expected case; thin margins are called out.
+- Chatbot: routing extracted into a pure `route_message()`; evaluation harness (`evaluation/`) with 190 labelled questions in three splits (dev / dev2 / held-out), Wilson intervals, per-route precision/recall, automatic red-flag checks and a CSV for two human raters (quadratic-weighted kappa). Router improvements (typos, Hinglish, agronomy "rate"/"cost" phrases, crop-choice questions), a "which do you mean?" safety net, and a price guard on LLM output.
+- User-study tooling: SUS scoring, task success, cost-survey calibration. `scripts/purge_seed_data.py` removes synthetic demo data safely (dry-run default).
+
+Testing
+- Playwright end-to-end suite (`e2e/`) and a CI job; new unit/integration tests for pagination, the OTP sender, refresh-token rotation, sessions, profit bands, the evaluation harness and the study tools.
+
 ## Final audit round (2026-10)
 
 Security and correctness

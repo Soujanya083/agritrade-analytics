@@ -39,8 +39,13 @@ function buildCorsOptions(env = process.env) {
       if (!origin || allowed.includes(origin.replace(/\/$/, ''))) return callback(null, true);
       return callback(null, false);
     },
-    methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Authorization', 'Content-Type'],
+    // DELETE is needed by DELETE /api/crops/:id; without it a browser blocks the
+    // request at the preflight step whenever CORS_ORIGINS is set (i.e. when deployed).
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Authorization', 'Content-Type', 'X-Requested-With'],
+    // Needed so the browser sends the httpOnly refresh cookie. Only ever combined
+    // with an explicit allow-list: never with "any origin".
+    credentials: true,
   };
 }
 
@@ -59,9 +64,25 @@ function safeEqual(a, b) {
 // response is therefore a DEMO-MODE behaviour (otherwise nobody could verify
 // an account). It is on by default to preserve that, and can be switched
 // off with EXPOSE_OTP_IN_RESPONSE=false the day a real sender exists.
-const shouldExposeOtp = (env = process.env) => (env.EXPOSE_OTP_IN_RESPONSE || 'true').toLowerCase() !== 'false';
+// A real e-mail sender (see services/otpSender.js) is "configured" when a provider and its key exist.
+const emailProviderConfigured = (env = process.env) => {
+  const provider = String(env.EMAIL_PROVIDER || '').toLowerCase();
+  if (!env.OTP_FROM_EMAIL) return false;
+  if (provider === 'brevo') return Boolean(env.BREVO_API_KEY);
+  if (provider === 'resend') return Boolean(env.RESEND_API_KEY);
+  return false;
+};
+
+// Explicit EXPOSE_OTP_IN_RESPONSE always wins. Otherwise the OTP is only echoed in
+// the response (demo mode) while NO real sender is configured; once e-mail works
+// the OTP is never returned by the API.
+const shouldExposeOtp = (env = process.env) => {
+  const explicit = env.EXPOSE_OTP_IN_RESPONSE;
+  if (explicit !== undefined && String(explicit).trim() !== '') return String(explicit).toLowerCase() !== 'false';
+  return !emailProviderConfigured(env);
+};
 
 module.exports = {
   DEV_FALLBACK_JWT_SECRET, isProduction, resolveJwtSecret, parseCorsOrigins,
-  buildCorsOptions, generateOtp, safeEqual, shouldExposeOtp,
+  buildCorsOptions, generateOtp, safeEqual, shouldExposeOtp, emailProviderConfigured,
 };
