@@ -3,8 +3,8 @@ const express = require('express');
 const { Crop, Bid, Transaction } = require('../models');
 const { createNotification, sendServerError } = require('../lib/helpers');
 const { authenticateToken, requireOwnerOf } = require('../lib/auth');
-const { razorpay } = require('../lib/razorpay');
 const { isValidObjectId, isPositiveNumber } = require('../validators');
+const { ensureShipmentForTransaction } = require('../services/shipmentService');
 
 const router = express.Router();
 
@@ -144,6 +144,14 @@ router.post('/api/bids/:bidId/accept', authenticateToken, async (req, res) => {
       status: 'awaiting_payment',
       paymentProvider: 'razorpay',
     });
+
+    // Every accepted deal gets a shipment (with its own ID and QR code) from the start. If this ever fails the deal
+    // still stands: the shipment is created on first look (GET /api/shipments/by-transaction/:id).
+    try {
+      await ensureShipmentForTransaction(transaction);
+    } catch (shipmentError) {
+      console.error('Could not create the shipment for a new deal:', shipmentError && shipmentError.message);
+    }
 
     await createNotification(
       bid.buyerId,

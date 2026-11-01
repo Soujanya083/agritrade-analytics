@@ -14,7 +14,18 @@ const TopNav = ({ activeTab, isFarmer, onLogout, setActiveTab, user }) => (
       </div>
 
       <nav>
-        {isFarmer ? (
+        {user.role === 'Transporter' ? (
+          <>
+            <button
+              className={`nav-link ${
+                activeTab === 'shipments' ? 'active' : ''
+              }`}
+              onClick={() => setActiveTab('shipments')}
+            >
+              Shipments
+            </button>
+          </>
+        ) : isFarmer ? (
           <>
             <button
               className={`nav-link ${
@@ -41,6 +52,15 @@ const TopNav = ({ activeTab, isFarmer, onLogout, setActiveTab, user }) => (
               onClick={() => setActiveTab('transactions')}
             >
               Transactions
+            </button>
+
+            <button
+              className={`nav-link ${
+                activeTab === 'shipments' ? 'active' : ''
+              }`}
+              onClick={() => setActiveTab('shipments')}
+            >
+              Shipments
             </button>
 
             <button
@@ -97,6 +117,15 @@ const TopNav = ({ activeTab, isFarmer, onLogout, setActiveTab, user }) => (
               onClick={() => setActiveTab('transactions')}
             >
               Transactions
+            </button>
+
+            <button
+              className={`nav-link ${
+                activeTab === 'shipments' ? 'active' : ''
+              }`}
+              onClick={() => setActiveTab('shipments')}
+            >
+              Shipments
             </button>
 
             <button

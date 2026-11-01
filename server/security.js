@@ -41,7 +41,8 @@ function buildCorsOptions(env = process.env) {
     },
     // DELETE is needed by DELETE /api/crops/:id; without it a browser blocks the
     // request at the preflight step whenever CORS_ORIGINS is set (i.e. when deployed).
-    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    // PUT is used to assign a carrier to a shipment; like DELETE it is blocked by browsers unless listed here.
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Authorization', 'Content-Type', 'X-Requested-With'],
     // Needed so the browser sends the httpOnly refresh cookie. Only ever combined
     // with an explicit allow-list: never with "any origin".

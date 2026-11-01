@@ -62,6 +62,13 @@ This document exists so the project can be defended honestly. Nothing here is hi
 | 9 | Unpaginated listings with inline photos | **Fixed** | Pagination, filters, cacheable image URL, dedicated rate limiter. |
 | 10 | Chatbot general answers unevaluated | **Evaluated; partly improved** | 190 labelled questions, held-out split, human-rating kit. Honest result: ~69% routing accuracy on unseen paraphrases (95% CI 56-80%). Safety net added: LLM answers containing prices are withheld. |
 
+## 2c. Shipment safety (traceability, not a guarantee)
+
+Shipment IDs/QR codes, a status lifecycle, one-time-code delivery confirmation with photos, and delay / quantity / damage / verification alerts
+are described in `docs/SHIPMENT_SAFETY.md`, including its limits: the code is e-mailed to the buyer (it proves control of their inbox, not physical
+receipt), GPS positions come from the carrier's phone and cannot be verified by the server, alert thresholds are uncalibrated defaults, photos are stored
+in MongoDB, and there is no SMS or push channel.
+
 ## 3. What to demonstrate in the viva
 
 1. **Signup → OTP → login → list a crop → bid → accept → pay → OTP delivery** (shows the full-stack flow; mention demo-mode OTP up front).
