@@ -14,3 +14,24 @@ Chatbot routing:    dev 100% (tuned), dev2 96% (tuned), held-out 69% (95% CI 56-
 
 NOT run: server Jest tests that need MongoDB, React Testing Library tests, `npm run build`, FastAPI tests,
 Playwright, live e-mail providers, Razorpay, live LLM. Run them locally / in CI (see IMPROVEMENT_GUIDE.md section 2).
+
+Shipment safety features (added after the hardening round)
+==========================================================
+QR encoder:         180 codes (versions 1-10, all 8 masks) decoded correctly by two independent readers (OpenCV QR detector and a
+                    ZXing-style decoder). A format-bit placement bug found this way was fixed before shipping.
+Pure rules:         236 server unit tests passed (lifecycle for every status pair, alert rules and planner, one-time-code rules,
+                    photo validation, location validation, access rules, QR) in a Jest-compatible runner.
+Service simulation: 39 end-to-end tests of the real service code against an in-memory stand-in for MongoDB (create, track,
+                    deliver, brute force and lock, replay, expiry, quantity and damage alerts, payout hold/release, delay alert
+                    dedupe/escalation/auto-close, photos). Found and fixed two real bugs: the payout was never released after a
+                    quantity-only dispute was resolved, and the photo count was computed from a stale copy.
+Mutation checks:    removing attempt counting, the "Delivered only via code" rule, the participant check, single-use of the code, or
+                    code expiry each made tests fail.
+Static checks:      TypeScript compiler over server (35 files), React app (59 files, no unused locals) and e2e: 0 problems.
+                    All 22 original API routes are still present; 17 routes added.
+React unit tests:   57 passed (session, analytics client, image tools, shipment API client, shipment helpers).
+Also fixed:         CORS did not allow PUT (assigning a carrier from the deployed site would have been blocked by the browser).
+
+NOT run (no MongoDB, no npm install, no browser here): shipments-api.test.js and the other MongoDB-backed Jest tests, the React Testing Library
+component tests (DeliveryConfirm, AlertsList, QrCode), `npm run build` (strict lint), the Playwright specs, real e-mail delivery, the camera
+QR scanner, browser GPS. Run them as described in IMPROVEMENT_GUIDE.md section 7.

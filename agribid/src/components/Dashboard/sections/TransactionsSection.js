@@ -1,6 +1,6 @@
 import React from 'react';
 
-const TransactionsSection = ({ activeTab, isFarmer, markDispatch, openOtpModal, startRazorpayPayment, startUpiPayment, transactions }) => (
+const TransactionsSection = ({ activeTab, isFarmer, markDispatch, openShipment, startRazorpayPayment, startUpiPayment, transactions }) => (
   (
     activeTab === 'transactions' && (
 
@@ -80,19 +80,17 @@ const TransactionsSection = ({ activeTab, isFarmer, markDispatch, openOtpModal, 
 
                 )}
 
-              {!isFarmer &&
-                txn.status === 'dispatched' && (
+              {['payment_confirmed', 'dispatched', 'delivery_completed'].includes(txn.status) && (
 
-                  <button
-                    className="bid-btn"
-                    onClick={() =>
-                      openOtpModal(txn._id)
-                    }
-                  >
-                    Enter OTP
-                  </button>
+                <button
+                  className="bid-btn"
+                  onClick={() => openShipment(txn)}
+                  style={{ marginLeft: '8px' }}
+                >
+                  {!isFarmer && txn.status === 'dispatched' ? 'Track / confirm delivery' : 'Track shipment'}
+                </button>
 
-                )}
+              )}
 
             </div>
 

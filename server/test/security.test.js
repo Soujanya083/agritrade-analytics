@@ -66,6 +66,9 @@ describe('CORS options for the deployed (allow-listed) setup', () => {
   test('DELETE is allowed, otherwise browsers block "delete listing" at the preflight step', () => {
     expect(options.methods).toContain('DELETE');
   });
+  test('PUT is allowed too (assigning a carrier), otherwise the browser blocks it at the preflight step', () => {
+    expect(options.methods).toContain('PUT');
+  });
   test('the refresh cookie needs credentials and the CSRF header must be allowed', () => {
     expect(options.credentials).toBe(true);
     expect(options.allowedHeaders).toContain('X-Requested-With');

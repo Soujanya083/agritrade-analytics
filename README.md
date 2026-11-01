@@ -133,3 +133,7 @@ Real: auth, bidding, deals, the forecasting/backtesting/segmentation/anomaly cod
 ## Hardening round
 
 See [IMPROVEMENT_GUIDE.md](IMPROVEMENT_GUIDE.md) for the ten known weaknesses, what was fixed, what needs real users or time, and the step-by-step plan.
+
+## Shipment safety
+
+Shipment IDs and QR codes, a status lifecycle with timestamps, one-time-code delivery confirmation with photos, and alerts for delays, quantity mismatches and damage: see [docs/SHIPMENT_SAFETY.md](docs/SHIPMENT_SAFETY.md).

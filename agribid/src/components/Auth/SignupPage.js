@@ -140,6 +140,13 @@ const SignupPage = ({ onNavigate }) => {
           >
             Buyer
           </button>
+          <button 
+            type="button"
+            className={`tab-btn ${role === 'Transporter' ? 'active blue' : ''}`}
+            onClick={() => setRole('Transporter')}
+          >
+            Transporter
+          </button>
         </div>
 
         <form className="signup__form" onSubmit={handleSubmit}>
