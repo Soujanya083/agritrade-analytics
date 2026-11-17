@@ -6,7 +6,8 @@ const rateLimit = require('express-rate-limit');
 // script/bot from hammering the API.
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 300,
+  // RATE_LIMIT_MAX lets automated tests (which send hundreds of requests from one IP) raise the cap
+  max: Number(process.env.RATE_LIMIT_MAX) || 300,
   standardHeaders: true,
   legacyHeaders: false,
   message: { message: 'Too many requests, please try again later.' },

@@ -18,6 +18,7 @@ beforeAll(async () => {
   process.env.MONGO_URI = mongoServer.uri;
   process.env.NODE_ENV = 'development';
   process.env.AUTH_RATE_LIMIT_MAX = '1000';
+  process.env.RATE_LIMIT_MAX = '100000'; // this file sends far more than 300 requests from one IP
   process.env.ALERT_SWEEP_INTERVAL_MINUTES = '0';
   delete process.env.EMAIL_PROVIDER;
   // eslint-disable-next-line global-require
@@ -305,13 +306,15 @@ describe('photos', () => {
   });
   test('wrong types, disguised files and oversize uploads are refused', async () => {
     const deal = await newDeal();
+    // with a transporter assigned the farmer is no longer the carrier (a farmer who delivers himself may add delivery photos)
+    await request(app).put(`/api/shipments/${deal.code}/carrier`).set(auth(deal.farmer.token)).send({ transporterEmail: deal.transporter.email });
     const post = (type, body, kind = 'damage') => request(app).post(`/api/shipments/${deal.code}/photos?kind=${kind}`).set(auth(deal.farmer.token)).set('Content-Type', type).send(body);
     expect((await post('image/jpeg', Buffer.from('<script>alert(1)</script> padding padding'))).statusCode).toBe(415);
     expect((await post('image/png', JPEG)).statusCode).toBe(415);
     expect((await post('image/svg+xml', Buffer.from('<svg/>'))).statusCode).toBeGreaterThanOrEqual(400);
     expect((await post('image/jpeg', Buffer.concat([JPEG, Buffer.alloc(3 * 1024 * 1024)]))).statusCode).toBe(413);
     expect((await post('image/jpeg', JPEG, 'selfie')).statusCode).toBe(400);
-    expect((await post('image/jpeg', JPEG, 'delivery')).statusCode).toBe(403);   // the farmer takes no delivery photos
+    expect((await post('image/jpeg', JPEG, 'delivery')).statusCode).toBe(403);   // the farmer takes no delivery photos once a transporter is assigned
   });
 });
 

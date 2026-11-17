@@ -14,6 +14,7 @@ beforeAll(async () => {
   process.env.MONGO_URI = mongoServer.uri;
   process.env.NODE_ENV = 'development'; // cookie is not Secure, so supertest agents keep it
   process.env.AUTH_RATE_LIMIT_MAX = '1000';
+  process.env.RATE_LIMIT_MAX = '100000'; // this file sends far more than 300 requests from one IP
   delete process.env.EMAIL_PROVIDER;
   // eslint-disable-next-line global-require
   app = require('../server');

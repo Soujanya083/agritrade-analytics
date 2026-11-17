@@ -13,6 +13,7 @@ beforeAll(async () => {
   process.env.NODE_ENV = 'development';
   delete process.env.PEXELS_API_KEY;
   process.env.AUTH_RATE_LIMIT_MAX = '1000';
+  process.env.RATE_LIMIT_MAX = '100000'; // this file sends far more than 300 requests from one IP
   // eslint-disable-next-line global-require
   app = require('../server');
   await new Promise((resolve) => {
