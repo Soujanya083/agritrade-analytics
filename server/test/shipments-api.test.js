@@ -66,7 +66,7 @@ async function newDeal({ quantity = 100 } = {}) {
   const accepted = await request(app).post(`/api/bids/${bid.body.bid._id}/accept`).set(auth(farmer.token)).send({});
   const txId = accepted.body.transaction ? accepted.body.transaction._id : (await Transaction.findOne({ cropId }))._id;
   await Transaction.updateOne({ _id: txId }, { status: 'payment_confirmed' });
-  const list = await request(app).get(`/api/transactions/user/${farmer.id}`).set(auth(farmer.token));
+  const list = await request(app).get(`/api/transactions/user/${farmer.id}?role=Farmer`).set(auth(farmer.token));
   const code = list.body.transactions.find((t) => String(t._id) === String(txId)).shipmentId;
   return { farmer, buyer, transporter, txId: String(txId), code };
 }
