@@ -35,3 +35,7 @@ analytics-service/eda_data/
 analytics-service/*.csv
 
 analytics-service/*.csv
+
+e2e/e2e-out.txt
+e2e/test-results/
+e2e/playwright-report/
