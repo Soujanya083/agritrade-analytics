@@ -55,8 +55,9 @@ test.describe('shipment tracking and delivery verification', () => {
     await page.getByLabel('Delivery code').fill(code);
     await page.getByRole('button', { name: 'Confirm delivery' }).click();
     await expect(page.getByText(/payout is on hold/i).first()).toBeVisible();
-    await expect(page.getByText('Quantity mismatch')).toBeVisible();
-    await expect(page.getByText(/100 kg was dispatched but the buyer confirmed 90 kg/)).toBeVisible();   // the reason is explained
+    await expect(page.getByText('Quantity mismatch').first()).toBeVisible();
+    // the reason appears in both the alert and the timeline, so take the first match
+    await expect(page.getByText(/100 kg was dispatched but the buyer confirmed 90 kg/).first()).toBeVisible();
   });
 
   test('the farmer sees the alert but cannot resolve it; the buyer can, and the payout is released', async ({ browser, request }) => {
@@ -67,10 +68,11 @@ test.describe('shipment tracking and delivery verification', () => {
     const farmerPage = await (await browser.newContext()).newPage();
     autoDialogs(farmerPage);
     await loginThroughUi(farmerPage, deal.farmer);
-    await expect(farmerPage.getByText(/open shipment alert/)).toBeVisible();          // the dashboard banner
+    await expect(farmerPage.getByText(/open shipment alert/).first()).toBeVisible();          // the dashboard banner
     await farmerPage.getByRole('button', { name: 'View shipments' }).click();
+    await farmerPage.getByRole('button', { name: 'Open' }).first().waitFor({ timeout: 20000 });
     await farmerPage.getByRole('button', { name: 'Open' }).first().click();
-    await expect(farmerPage.getByText('Quantity mismatch')).toBeVisible();
+    await expect(farmerPage.getByText('Quantity mismatch').first()).toBeVisible();
     await expect(farmerPage.getByRole('button', { name: 'Resolve' })).toHaveCount(0);
     await farmerPage.getByRole('button', { name: 'Acknowledge' }).click();
     await expect(farmerPage.getByText('acknowledged', { exact: false }).first()).toBeVisible();
@@ -79,10 +81,11 @@ test.describe('shipment tracking and delivery verification', () => {
     autoDialogs(buyerPage);
     await loginThroughUi(buyerPage, deal.buyer);
     await buyerPage.getByRole('button', { name: 'View shipments' }).click();
+    await buyerPage.getByRole('button', { name: 'Open' }).first().waitFor({ timeout: 20000 });
     await buyerPage.getByRole('button', { name: 'Open' }).first().click();
     await buyerPage.getByLabel('Note for this alert').fill('Farmer refunded the missing 10 kg');
     await buyerPage.getByRole('button', { name: 'Resolve' }).click();
-    await expect(buyerPage.getByText(/resolved alert/)).toBeVisible();
+    await expect(buyerPage.getByText(/resolved alert/).first()).toBeVisible();
   });
 
   test('a transporter sees only their assigned shipments, and starts on the Shipments tab', async ({ browser, request }) => {
@@ -91,7 +94,7 @@ test.describe('shipment tracking and delivery verification', () => {
     const page = await (await browser.newContext()).newPage();
     autoDialogs(page);
     await loginThroughUi(page, deal.transporter);
-    await expect(page.getByText(deal.code)).toBeVisible();
+    await expect(page.getByText(deal.code).first()).toBeVisible();
     await expect(page.getByRole('button', { name: 'Browse Crops' })).toHaveCount(0);
 
     const stranger = await (await browser.newContext()).newPage();
