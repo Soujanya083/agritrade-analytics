@@ -70,8 +70,8 @@ test.describe('shipment tracking and delivery verification', () => {
     await loginThroughUi(farmerPage, deal.farmer);
     await expect(farmerPage.getByText(/open shipment alert/).first()).toBeVisible();          // the dashboard banner
     await farmerPage.getByRole('button', { name: 'View shipments' }).click();
+    await farmerPage.getByRole('button', { name: 'All', exact: true }).click();
     await farmerPage.getByRole('button', { name: 'Open' }).first().waitFor({ timeout: 20000 });
-    await farmerPage.getByRole('button', { name: 'Open' }).first().click();
     await expect(farmerPage.getByText('Quantity mismatch').first()).toBeVisible();
     await expect(farmerPage.getByRole('button', { name: 'Resolve' })).toHaveCount(0);
     await farmerPage.getByRole('button', { name: 'Acknowledge' }).click();
@@ -81,8 +81,8 @@ test.describe('shipment tracking and delivery verification', () => {
     autoDialogs(buyerPage);
     await loginThroughUi(buyerPage, deal.buyer);
     await buyerPage.getByRole('button', { name: 'View shipments' }).click();
+    await buyerPage.getByRole('button', { name: 'All', exact: true }).click();
     await buyerPage.getByRole('button', { name: 'Open' }).first().waitFor({ timeout: 20000 });
-    await buyerPage.getByRole('button', { name: 'Open' }).first().click();
     await buyerPage.getByLabel('Note for this alert').fill('Farmer refunded the missing 10 kg');
     await buyerPage.getByRole('button', { name: 'Resolve' }).click();
     await expect(buyerPage.getByText(/resolved alert/).first()).toBeVisible();
