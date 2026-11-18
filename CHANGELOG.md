@@ -2,6 +2,15 @@
 
 Each round built on the previous one; this package contains all of them.
 
+## Shipment safety features (2026-10)
+
+- **Shipment ID + QR code** for every accepted deal (`SHP-YYYYMMDD-XXXXXXXX`); the QR holds only a login-protected link; non-participants get 404. Append-only event log with time, role and name.
+- **Status lifecycle** with 10 statuses, a tested transition table (who may do what), required reasons, optimistic concurrency, and honestly labelled tracking (live GPS only when fresh and permitted; manual and simulated positions are never shown as live).
+- **Delivery verification**: one-time code stored only as an HMAC, 60-minute expiry, single use, atomic attempt counting, lock after 5 wrong codes, e-mail delivery through Brevo/Resend (development-only echo to the requesting buyer otherwise); buyer states the quantity received and condition; delivery/damage photos validated by content, size-limited, private; payout held while a dispute is open.
+- **Alerts** for delay, quantity mismatch, damage and failed verification: configurable rules, plain-language reason and numbers on every alert, one open alert per cause, escalation instead of repeats, auto-close when the cause clears, acknowledge / investigate / resolve with role rules; shown in the notification list, a dashboard banner and the Shipments tab.
+- New **Transporter** role. The old "Mark dispatch" and delivery-code routes now run through shipments (the delivery code is no longer stored in clear text or written into a notification).
+- Tests: 9 pure-rule suites, an end-to-end service simulation (39 tests, no database needed), HTTP tests against MongoDB, React component tests, a Playwright spec.
+
 ## Hardening round: the ten known weaknesses (2026-10)
 
 Security and accounts

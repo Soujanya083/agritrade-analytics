@@ -149,3 +149,26 @@ In your `.gitignore` (when you decide to push it) you may want to add: `e2e/node
 - **No OTP in the signup response and no e-mail**: a provider is configured but failing; press "Resend OTP" and check the server log for `provider-http-<status>`.
 - **Jest cannot start MongoDB**: the first run downloads a MongoDB binary (needs internet).
 - **Playwright cannot find a button**: a label changed; update `e2e/helpers.js`.
+
+## 7. Shipment safety features (added after the ten weaknesses)
+
+Full description, rules and limits: `docs/SHIPMENT_SAFETY.md`. What you need to do:
+
+1. **Run the tests** (these were NOT all runnable where the code was written, see section 2):
+   ```powershell
+   cd server; npm test          # includes shipments-api.test.js (needs MongoDB) and the pure suites
+   cd ..\agribid; npm test -- --watchAll=false; npm run build
+   cd ..\e2e; npx playwright test shipments.spec.js
+   ```
+2. **Set these on the server** (Render): `PUBLIC_APP_URL` (your Vercel address, so the QR link opens your site),
+   `SHIPMENT_ADMIN_EMAILS` (your own e-mail, so you can see and resolve every shipment during the viva), and the e-mail provider from Step 4
+   (without it the delivery code can only be shown in development mode). For a **demo deployment** without e-mail set
+   `EXPOSE_DELIVERY_OTP_IN_RESPONSE=true`: the code is then shown to the buyer, clearly labelled "DEVELOPMENT MODE".
+3. **A 5-minute demo for the viva**: create three accounts (Farmer, Buyer, Transporter) -> farmer lists a crop, buyer bids, farmer accepts ->
+   buyer pays (UPI demo) -> farmer opens Shipments, releases for pickup, assigns the transporter by e-mail -> transporter picks up, adds a manual
+   checkpoint, goes out for delivery -> buyer opens the QR link, asks for the code, enters it with 90 kg instead of 100 kg -> alert appears for
+   the farmer with its reason; payout is on hold -> buyer resolves it -> payout is released.
+4. **Say honestly** (viva): it gives traceability, evidence and early warnings, not safe delivery; the code proves control of the buyer's e-mail, not
+   physical receipt; positions are only "live" when a fresh phone GPS fix exists; thresholds are defaults, not calibrated.
+5. Older deals get their shipment the first time someone opens "Track shipment" on them.
+

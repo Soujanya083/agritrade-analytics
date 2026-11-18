@@ -42,11 +42,15 @@ app.use(require('./routes/crops'));
 app.use(require('./routes/bids'));
 app.use(require('./routes/transactions'));
 app.use(require('./routes/notifications'));
+app.use(require('./routes/shipments'));
 
 const PORT = process.env.PORT || 5000;
 const HOST = process.env.HOST || '0.0.0.0';
 if (require.main === module) {
   app.listen(PORT, HOST, () => console.log(`Server running on http://${HOST}:${PORT}`));
+  // Delay alerts are also re-checked on a timer, so an overdue shipment is flagged even if nobody opens the app.
+  // (They are re-checked on every read too, which is what keeps things right on hosts that sleep.)
+  require('./services/shipmentSweep').start();
 }
 
 module.exports = app;

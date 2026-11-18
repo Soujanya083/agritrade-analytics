@@ -62,6 +62,11 @@ const LoginPage = ({ onNavigate, onLoginSuccess }) => {
                         className={`tab-btn ${activeRole === 'Buyer' ? 'active blue' : ''}`}
                         onClick={() => setActiveRole('Buyer')}
                     >Buyer</button>
+                    <button
+                        type="button"
+                        className={`tab-btn ${activeRole === 'Transporter' ? 'active blue' : ''}`}
+                        onClick={() => setActiveRole('Transporter')}
+                    >Transporter</button>
                 </div>
 
                 <form className="login__form" onSubmit={handleLogin}>

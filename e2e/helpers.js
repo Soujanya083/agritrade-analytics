@@ -68,7 +68,11 @@ function autoDialogs(page, { promptValue } = {}) {
 async function loginThroughUi(page, user) {
   await page.goto('/');
   await page.getByRole('button', { name: /I'm a Farmer/i }).click();
-  if (user.role === 'Buyer') await page.getByRole('button', { name: 'Buyer', exact: true }).click();
+  // The login form starts on the Farmer role. Any other role (Buyer, Transporter) has to be
+  // chosen explicitly, otherwise the API receives role "Farmer" for that account and rejects it.
+  if (user.role !== 'Farmer') {
+    await page.getByRole('button', { name: user.role, exact: true }).click();
+  }
   await page.getByPlaceholder('Enter your email').fill(user.email);
   await page.getByPlaceholder('Enter your registered phone number').fill(user.phone);
   await page.getByPlaceholder('Enter your password').fill(user.password);

@@ -4,11 +4,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { prepareImageForUpload, todayIso } from '../../utils/imageTools';
 import { API_BASE, authFetch, clearSession } from '../../api/session';
 import { BUYER_PAGE_SIZE, FARMER_PAGE_SIZE, LISTING_CATEGORIES } from './dashboardConfig';
+import { buildShipmentHash, parseShipmentHash } from '../Shipments/shipmentUtils';
 
 const useDashboardData = ({ user, onLogout }) => {
-  const [activeTab, setActiveTab] = useState(
-    user?.role === 'Farmer' ? 'dashboard' : 'browse'
-  );
+  // a scanned shipment link (#/shipment/CODE) and the transporter role both start on the Shipments tab
+  const [activeTab, setActiveTab] = useState(() => {
+    if (user?.role === 'Transporter' || parseShipmentHash(window.location.hash)) return 'shipments';
+    return user?.role === 'Farmer' ? 'dashboard' : 'browse';
+  });
 
   const [crops, setCrops] = useState([]);
   const [myBids, setMyBids] = useState([]);
@@ -22,11 +25,6 @@ const useDashboardData = ({ user, onLogout }) => {
     useState('All Categories');
 
   const [showUploadForm, setShowUploadForm] = useState(false);
-  const [otpModal, setOtpModal] = useState({
-    open: false,
-    transactionId: null,
-    otpCode: '',
-  });
 
   const [upiModal, setUpiModal] = useState({
     open: false,
@@ -55,6 +53,7 @@ const useDashboardData = ({ user, onLogout }) => {
 
   const userId = user?.id || user?._id || '';
   const isFarmer = user?.role === 'Farmer';
+  const isTransporter = user?.role === 'Transporter';
 
   const fetchJson = async (url, options = {}) => {
     // authFetch attaches the in-memory access token and, on a 401, renews it through the
@@ -124,6 +123,13 @@ const useDashboardData = ({ user, onLogout }) => {
     setLoadError(null);
 
     try {
+      if (isTransporter) { // transporters only work with shipments: no listings, bids or payments
+        const notifData = await fetchJson(`${API_BASE}/notifications/${userId}`);
+        setNotifications(notifData.notifications || []);
+        setUnreadCount(notifData.unreadCount || 0);
+        return;
+      }
+
       const [, notifData] = await Promise.all([
         loadListings(1),
         fetchJson(`${API_BASE}/notifications/${userId}`),
@@ -529,7 +535,7 @@ const useDashboardData = ({ user, onLogout }) => {
       );
 
       window.alert(
-        'Dispatch marked and OTP sent to buyer notifications.'
+        'Shipment released for pickup. Follow it in the Shipments tab.'
       );
 
       await loadData();
@@ -538,41 +544,10 @@ const useDashboardData = ({ user, onLogout }) => {
     }
   };
 
-  const openOtpModal = (transactionId) => {
-    setOtpModal({
-      open: true,
-      transactionId,
-      otpCode: '',
-    });
-  };
-
-  const submitOtp = async () => {
-    try {
-      await fetchJson(
-        `${API_BASE}/transactions/${otpModal.transactionId}/complete-delivery`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            otpCode: otpModal.otpCode,
-          }),
-        }
-      );
-
-      setOtpModal({
-        open: false,
-        transactionId: null,
-        otpCode: '',
-      });
-
-      window.alert('Delivery marked completed.');
-
-      await loadData();
-    } catch (error) {
-      window.alert(error.message);
-    }
+  // jumps to a deal's shipment (older deals get theirs created on first look)
+  const openShipment = (txn) => {
+    window.location.hash = txn.shipmentId ? buildShipmentHash(txn.shipmentId) : `#/shipment-for/${txn._id}`;
+    setActiveTab('shipments');
   };
 
   const markNotificationRead = async (notificationId) => {
@@ -627,8 +602,6 @@ const useDashboardData = ({ user, onLogout }) => {
     setSelectedCategory,
     showUploadForm,
     setShowUploadForm,
-    otpModal,
-    setOtpModal,
     upiModal,
     setUpiModal,
     uploadData,
@@ -669,8 +642,7 @@ const useDashboardData = ({ user, onLogout }) => {
     confirmUpiPayment,
     startRazorpayPayment,
     markDispatch,
-    openOtpModal,
-    submitOtp,
+    openShipment,
     markNotificationRead,
     markAllRead,
   };

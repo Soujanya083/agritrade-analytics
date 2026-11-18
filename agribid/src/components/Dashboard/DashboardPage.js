@@ -17,7 +17,8 @@ import BuyerBids from './sections/BuyerBids';
 import TransactionsSection from './sections/TransactionsSection';
 import UpiModal from './sections/UpiModal';
 import NotificationsSection from './sections/NotificationsSection';
-import OtpModal from './sections/OtpModal';
+import ShipmentsPanel from '../Shipments/ShipmentsPanel';
+import ShipmentAlertsBanner from '../Shipments/ShipmentAlertsBanner';
 
 const DashboardPage = ({ user, onLogout, onNavigate }) => {
   const {
@@ -42,16 +43,14 @@ const DashboardPage = ({ user, onLogout, onNavigate }) => {
     markAllRead,
     markDispatch,
     markNotificationRead,
+    openShipment,
     myBids,
     myListings,
     notifications,
-    openOtpModal,
-    otpModal,
     placeBid,
     searchText,
     selectedCategory,
     setActiveTab,
-    setOtpModal,
     setSearchText,
     setSelectedCategory,
     setShowUploadForm,
@@ -59,7 +58,6 @@ const DashboardPage = ({ user, onLogout, onNavigate }) => {
     showUploadForm,
     startRazorpayPayment,
     startUpiPayment,
-    submitOtp,
     transactions,
     unreadCount,
     upiModal,
@@ -100,6 +98,8 @@ const DashboardPage = ({ user, onLogout, onNavigate }) => {
 
       <main className="dashboard-content">
 
+        {activeTab !== 'shipments' && <ShipmentAlertsBanner onOpen={() => setActiveTab('shipments')} />}
+
         {/* ANALYTICS PAGE */}
 
         {activeTab === 'analytics' ? (
@@ -113,6 +113,10 @@ const DashboardPage = ({ user, onLogout, onNavigate }) => {
 
             <AnalyticsPanel />
           </>
+
+        ) : activeTab === 'shipments' ? (
+
+          <ShipmentsPanel user={user} />
 
         ) : activeTab === 'market-intelligence' ? (
 
@@ -249,7 +253,7 @@ const DashboardPage = ({ user, onLogout, onNavigate }) => {
               activeTab={activeTab}
               isFarmer={isFarmer}
               markDispatch={markDispatch}
-              openOtpModal={openOtpModal}
+              openShipment={openShipment}
               startRazorpayPayment={startRazorpayPayment}
               startUpiPayment={startUpiPayment}
               transactions={transactions}
@@ -278,9 +282,7 @@ const DashboardPage = ({ user, onLogout, onNavigate }) => {
 
       <UpiModal confirmUpiPayment={confirmUpiPayment} setUpiModal={setUpiModal} upiModal={upiModal} />
 
-      {/* ================= OTP MODAL ================= */}
 
-      <OtpModal otpModal={otpModal} setOtpModal={setOtpModal} submitOtp={submitOtp} />
 
     </div>
   );

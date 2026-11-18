@@ -31,7 +31,7 @@ router.post('/api/signup', authLimiter, async (req, res) => {
       role, fullName, email, phone, location, password, confirmPassword, deliveryAddress,
     } = req.body;
     const normalizedEmail = String(email || '').toLowerCase().trim();
-    const normalizedRole = role === 'Buyer' ? 'Buyer' : 'Farmer';
+    const normalizedRole = ['Buyer', 'Transporter'].includes(role) ? role : 'Farmer';
 
     if (!fullName || !phone || !location || !normalizedEmail || !password) {
       return res.status(400).json({ message: 'All required fields must be provided' });

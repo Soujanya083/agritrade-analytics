@@ -2,12 +2,13 @@
 const express = require('express');
 const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
-const { Crop, Bid, Transaction } = require('../models');
+const { Transaction, Shipment } = require('../models');
 const { createNotification, sendServerError } = require('../lib/helpers');
 const { authenticateToken, requireOwnerOf } = require('../lib/auth');
 const { razorpay } = require('../lib/razorpay');
 const { isValidObjectId, isNonEmptyString } = require('../validators');
-const { generateOtp, safeEqual } = require('../security');
+const { safeEqual } = require('../security');
+const shipments = require('../services/shipmentService');
 
 const router = express.Router();
 
@@ -165,6 +166,9 @@ router.post('/api/transactions/:transactionId/verify-payment', authenticateToken
   }
 });
 
+// "Dispatch" now releases the shipment for pickup. The delivery code is NOT created here any more: it is issued
+// when the carrier sets the shipment out for delivery, stored only as a hash, and sent to the buyer privately
+// (it used to be saved in clear text and written into the buyer's notification text).
 router.post('/api/transactions/:transactionId/mark-dispatch', authenticateToken, async (req, res) => {
   try {
     const farmerId = req.user.id;
@@ -180,97 +184,61 @@ router.post('/api/transactions/:transactionId/mark-dispatch', authenticateToken,
     if (transaction.status !== 'payment_confirmed') {
       return res.status(400).json({ message: 'Dispatch allowed only after payment confirmation' });
     }
-    const otpCode = generateOtp();
-    transaction.status = 'dispatched';
-    transaction.dispatchedDate = new Date().toISOString().slice(0, 10);
-    transaction.otpCode = otpCode;
-    transaction.otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
-    await transaction.save();
-
-    await createNotification(
-      transaction.buyerId,
-      `Farmer dispatched ${transaction.cropId.cropName}. Use OTP ${otpCode} to confirm delivery.`,
-      'dispatch',
-    );
+    const actor = await shipments.loadActor(req.user);
+    const shipment = await shipments.ensureShipmentForTransaction(transaction);
+    const found = await shipments.findForActor(shipment.shipmentCode, actor);
+    const { expectedDeliveryAt, note } = req.body || {};
+    await shipments.changeStatus(found.shipment, actor, found.roles, { to: 'ready_for_pickup', expectedDeliveryAt, note });
     await createNotification(
       transaction.farmerId,
-      `Dispatch marked for ${transaction.cropId.cropName}. Waiting for buyer OTP confirmation.`,
+      `Shipment ${shipment.shipmentCode} for ${transaction.cropId.cropName} is ready for pickup. Track it from the Shipments tab.`,
       'dispatch',
     );
-    res.status(200).json({ message: 'Dispatch marked. OTP generated for buyer confirmation.' });
+    res.status(200).json({ message: 'Shipment released for pickup.', shipmentId: shipment.shipmentCode });
   } catch (error) {
+    if (error instanceof shipments.ShipmentError) return res.status(error.status).json({ message: error.message, code: error.code });
     return sendServerError(res, error, 'Failed to mark dispatch');
   }
 });
-
-// A 6-digit OTP has only 1,000,000 values; without a per-user cap an
-// authenticated buyer could simply try them all.
+// Per-user brake on delivery confirmations (the shipment itself also locks after repeated wrong codes).
 const deliveryOtpLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
-  keyGenerator: (req) => `otp:${req.user?.id || req.ip}`,
-  validate: { keyGeneratorIpFallback: false },
+  max: Number(process.env.DELIVERY_OTP_RATE_LIMIT_MAX) || 10,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { message: 'Too many OTP attempts, please try again later.' },
+  keyGenerator: (req) => (req.user && req.user.id ? String(req.user.id) : 'anonymous'),
+  message: { message: 'Too many delivery confirmation attempts. Please wait a few minutes.' },
 });
 
+// Kept so older clients keep working: it is the same confirmation as POST /api/shipments/:code/confirm-delivery
+// (hashed single-use code, attempt limits, and the buyer must state the quantity actually received).
 router.post('/api/transactions/:transactionId/complete-delivery', authenticateToken, deliveryOtpLimiter, async (req, res) => {
   try {
-    const { otpCode } = req.body;
-    const buyerId = req.user.id;
+    const { otpCode, receivedQuantityKg, condition, damagedQuantityKg, note } = req.body || {};
     const { transactionId } = req.params;
-    if (!isValidObjectId(transactionId) || !isValidObjectId(buyerId)) {
+    if (!isValidObjectId(transactionId) || !isValidObjectId(req.user.id)) {
       return res.status(400).json({ message: 'Invalid transaction or buyer ID' });
-    }
-    if (!otpCode || !/^[0-9]{6}$/.test(String(otpCode).trim())) {
-      return res.status(400).json({ message: 'OTP must be a 6-digit code' });
     }
     const transaction = await Transaction.findById(transactionId);
     if (!transaction) return res.status(404).json({ message: 'Transaction not found' });
-    if (String(transaction.buyerId) !== String(buyerId)) {
+    if (String(transaction.buyerId) !== String(req.user.id)) {
       return res.status(403).json({ message: 'Not authorized to complete this delivery' });
     }
-    if (transaction.status !== 'dispatched') {
-      return res.status(400).json({ message: 'Delivery confirmation is available only after dispatch' });
-    }
-    if (!transaction.otpCode || !safeEqual(transaction.otpCode, String(otpCode).trim())) {
-      return res.status(400).json({ message: 'Invalid OTP' });
-    }
-    if (transaction.otpExpiresAt && transaction.otpExpiresAt < new Date()) {
-      return res.status(400).json({ message: 'OTP expired' });
-    }
-
-    transaction.status = 'delivery_completed';
-    transaction.completedDate = new Date().toISOString().slice(0, 10);
-    transaction.otpCode = null;
-    transaction.otpExpiresAt = null;
-    await transaction.save();
-
-    await Bid.findByIdAndUpdate(transaction.bidId, { status: 'delivery_completed' });
-    await Crop.findByIdAndUpdate(transaction.cropId, { status: 'completed' });
-
-    await createNotification(
-      transaction.farmerId,
-      `Delivery completed. Payout INR ${transaction.payout.toLocaleString()} released after 5% fee deduction.`,
-      'delivery',
-    );
-    await createNotification(
-      transaction.buyerId,
-      'Delivery confirmed successfully. Transaction completed.',
-      'delivery',
-    );
-
+    const shipment = await shipments.ensureShipmentForTransaction(transaction);
+    const actor = await shipments.loadActor(req.user);
+    const found = await shipments.findForActor(shipment.shipmentCode, actor);
+    const out = await shipments.confirmDelivery(found.shipment, actor, found.roles, { otp: otpCode, receivedQuantityKg, condition, damagedQuantityKg, note });
     res.status(200).json({
-      message: 'Delivery completed successfully',
-      payout: transaction.payout,
-      platformFee: transaction.platformFee,
+      message: out.issues ? 'Delivery recorded. Your report was logged and the payout is on hold until it is reviewed.' : 'Delivery completed successfully',
+      shipmentId: shipment.shipmentCode,
+      payout: out.issues ? undefined : transaction.payout,
+      platformFee: out.issues ? undefined : transaction.platformFee,
     });
   } catch (error) {
+    if (error instanceof shipments.ShipmentError) return res.status(error.status).json({ message: error.message, code: error.code, ...error.extra });
     return sendServerError(res, error, 'Failed to complete delivery');
   }
 });
-
 router.get('/api/transactions/user/:userId', authenticateToken, requireOwnerOf('userId'), async (req, res) => {
   try {
     const { role } = req.query;
@@ -281,6 +249,13 @@ router.get('/api/transactions/user/:userId', authenticateToken, requireOwnerOf('
       .populate('farmerId', 'fullName location')
       .sort({ createdAt: -1 })
       .lean();
+    const links = await Shipment.find({ transactionId: { $in: transactions.map((t) => t._id) } }).select('transactionId shipmentCode status').lean();
+    const byTx = Object.fromEntries(links.map((l) => [String(l.transactionId), l]));
+    transactions.forEach((t) => {
+      const link = byTx[String(t._id)];
+      t.shipmentId = link ? link.shipmentCode : null;     // null for older deals: the Shipments tab creates it on first look
+      t.shipmentStatus = link ? link.status : null;
+    });
     res.status(200).json({ transactions });
   } catch (error) {
     return sendServerError(res, error, 'Failed to fetch transactions');
