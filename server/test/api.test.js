@@ -68,7 +68,6 @@ describe('POST /api/signup', () => {
       password: 'password123',
       confirmPassword: 'password123',
     });
-    console.log(list.status, JSON.stringify(list.body).slice(0, 700));
     expect(res.statusCode).toBe(400);
     expect(res.body.message).toMatch(/digits only/i);
   });
