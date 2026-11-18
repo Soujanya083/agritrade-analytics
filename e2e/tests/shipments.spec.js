@@ -3,6 +3,27 @@ const { API_URL, createVerifiedUser, apiLogin, apiCreateListing, autoDialogs, lo
 
 const H = (token) => ({ Authorization: `Bearer ${token}` });
 
+// Logs in through the UI, but if the app never reaches the logged-in screen it fails
+// quickly and prints what the page is actually showing, instead of a bare 60 s timeout.
+async function loginOrExplain(page, user, ms = 20000) {
+  let timer;
+  const stuck = new Promise((resolve) => {
+    timer = setTimeout(async () => {
+      const text = await page.locator('body').innerText().catch(() => '(page not readable)');
+      resolve(`Login did not reach the app within ${ms / 1000}s. URL: ${page.url()}\nPage text: ${text.slice(0, 500)}`);
+    }, ms);
+  });
+  const result = await Promise.race([loginThroughUi(page, user).then(() => null), stuck]);
+  clearTimeout(timer);
+  if (result) throw new Error(result);
+}
+
+// Opens the first shipment card from the list. The alert, reason and resolve controls
+// only appear once the shipment is opened, so waiting for the button is not enough.
+async function openFirstShipment(page) {
+  await page.getByRole('button', { name: 'Open' }).first().click({ timeout: 20000 });
+}
+
 // A paid deal with a shipment that is already out for delivery, set up through the API.
 async function dealOutForDelivery(request) {
   const farmer = await createVerifiedUser(request, 'Farmer');
@@ -34,7 +55,7 @@ test.describe('shipment tracking and delivery verification', () => {
     await loginThroughUi(page, deal.buyer);
 
     await page.getByRole('button', { name: 'Shipments' }).first().click();
-    await page.getByRole('button', { name: 'Open' }).first().click();
+    await openFirstShipment(page);
     await expect(page.getByText(deal.code).first()).toBeVisible();
     await expect(page.getByText('Out for Delivery').first()).toBeVisible();
     await expect(page.getByText(/NOT LIVE: Manual update/)).toBeVisible();     // a typed position is never presented as live
@@ -71,7 +92,7 @@ test.describe('shipment tracking and delivery verification', () => {
     await expect(farmerPage.getByText(/open shipment alert/).first()).toBeVisible();          // the dashboard banner
     await farmerPage.getByRole('button', { name: 'View shipments' }).click();
     await farmerPage.getByRole('button', { name: 'All', exact: true }).click();
-    await farmerPage.getByRole('button', { name: 'Open' }).first().waitFor({ timeout: 20000 });
+    await openFirstShipment(farmerPage);                                                       // open the card, then look for the alert
     await expect(farmerPage.getByText('Quantity mismatch').first()).toBeVisible();
     await expect(farmerPage.getByRole('button', { name: 'Resolve' })).toHaveCount(0);
     await farmerPage.getByRole('button', { name: 'Acknowledge' }).click();
@@ -82,7 +103,7 @@ test.describe('shipment tracking and delivery verification', () => {
     await loginThroughUi(buyerPage, deal.buyer);
     await buyerPage.getByRole('button', { name: 'View shipments' }).click();
     await buyerPage.getByRole('button', { name: 'All', exact: true }).click();
-    await buyerPage.getByRole('button', { name: 'Open' }).first().waitFor({ timeout: 20000 });
+    await openFirstShipment(buyerPage);
     await buyerPage.getByLabel('Note for this alert').fill('Farmer refunded the missing 10 kg');
     await buyerPage.getByRole('button', { name: 'Resolve' }).click();
     await expect(buyerPage.getByText(/resolved alert/).first()).toBeVisible();
@@ -93,13 +114,13 @@ test.describe('shipment tracking and delivery verification', () => {
     const other = await createVerifiedUser(request, 'Transporter');
     const page = await (await browser.newContext()).newPage();
     autoDialogs(page);
-    await loginThroughUi(page, deal.transporter);
+    await loginOrExplain(page, deal.transporter);
     await expect(page.getByText(deal.code).first()).toBeVisible();
     await expect(page.getByRole('button', { name: 'Browse Crops' })).toHaveCount(0);
 
     const stranger = await (await browser.newContext()).newPage();
     autoDialogs(stranger);
-    await loginThroughUi(stranger, other);
+    await loginOrExplain(stranger, other);
     await expect(stranger.getByText(deal.code)).toHaveCount(0);
     const direct = await request.get(`${API_URL}/shipments/${deal.code}`, { headers: H(await apiLogin(request, other)) });
     expect(direct.status()).toBe(404);
