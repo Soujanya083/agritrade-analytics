@@ -15,7 +15,7 @@ async function dealOutForDelivery(request) {
   const txId = accepted.transaction._id;
   await request.post(`${API_URL}/transactions/${txId}/confirm-upi-payment`, { headers: H(bt), data: {} });
   const me = JSON.parse(Buffer.from(ft.split('.')[1], 'base64url').toString());
-  const txs = await (await request.get(`${API_URL}/transactions/user/${me.id}`, { headers: H(ft) })).json();
+  const txs = await (await request.get(`${API_URL}/transactions/user/${me.id}?role=Farmer`, { headers: H(ft) })).json();
   const code = txs.transactions.find((t) => t._id === txId).shipmentId;
   const post = (path, token, data) => request.post(`${API_URL}/shipments/${code}${path}`, { headers: H(token), data });
   await post('/status', ft, { status: 'ready_for_pickup' });
